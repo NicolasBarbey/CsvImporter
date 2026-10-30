@@ -61,6 +61,8 @@ final class ImportCatalogCommand extends ContainerAwareCommand
             ->addOption('mapping', null, InputOption::VALUE_REQUIRED, 'Id or name of the mapping profile to use.')
             ->addOption('save-mapping', null, InputOption::VALUE_REQUIRED, 'Guess the mapping from the header of the file and keep it under this new profile name.')
             ->addOption('mode', 'm', InputOption::VALUE_REQUIRED, 'create_or_update, update_only or create_only.', ImportMode::CreateOrUpdate->value)
+            ->addOption('images-dir', null, InputOption::VALUE_REQUIRED, 'Directory holding the image files named in the image column.')
+            ->addOption('images-only', null, InputOption::VALUE_NONE, 'Load only the images of a file whose products already exist, without touching the rest.')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Simulate: report what would happen without writing to the catalog.');
     }
 
@@ -96,7 +98,7 @@ final class ImportCatalogCommand extends ContainerAwareCommand
 
         $style->writeln(\sprintf('%s of "%s" with the profile "%s" (%s)', $dryRun ? 'Simulation' : 'Import', basename($path), $profile->name, $mode->value));
 
-        $this->runner->run($job);
+        $this->runner->run($job, null, null === $input->getOption('images-dir') ? null : (string) $input->getOption('images-dir'), (bool) $input->getOption('images-only'));
         $job->reload();
 
         return $this->conclude($job, $style);

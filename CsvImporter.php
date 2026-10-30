@@ -1,8 +1,22 @@
 <?php
 
+declare(strict_types=1);
+
+/*
+ * This file is part of the Thelia package.
+ * http://www.thelia.net
+ *
+ * (c) OpenStudio <info@thelia.net>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 namespace CsvImporter;
 
+use CsvImporter\Image\ImageHttpClientFactory;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ServicesConfigurator;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Thelia\Module\BaseModule;
 
 class CsvImporter extends BaseModule
@@ -17,5 +31,8 @@ class CsvImporter extends BaseModule
             ])
             ->autowire(true)
             ->autoconfigure(true);
+
+        $servicesConfigurator->set('csv_importer.image_http_client', HttpClientInterface::class)
+            ->factory([ImageHttpClientFactory::class, 'create']);
     }
 }

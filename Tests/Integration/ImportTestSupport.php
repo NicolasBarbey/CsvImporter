@@ -14,6 +14,10 @@ declare(strict_types=1);
 
 namespace CsvImporter\Tests\Integration;
 
+use CsvImporter\Image\ImageFetcher;
+use CsvImporter\Image\ImagePass;
+use CsvImporter\Image\ImageSourceParser;
+use CsvImporter\Image\ProductImageLoader;
 use CsvImporter\Import\CatalogImportRunner;
 use CsvImporter\Import\HtmlCleaner;
 use CsvImporter\Import\ImportMode;
@@ -29,12 +33,15 @@ use CsvImporter\Parsing\NumberParser;
 use CsvImporter\Profile\ImportProfile;
 use CsvImporter\Profile\ProfileRepository;
 use CsvImporter\Reader\CsvFileReader;
+use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\FlockStore;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Thelia\Domain\Catalog\Brand\BrandFacade;
 use Thelia\Domain\Catalog\Category\CategoryFacade;
 use Thelia\Domain\Catalog\Product\ProductFacade;
 use Thelia\Domain\Catalog\Product\PSEFacade;
+use Thelia\Domain\Media\MediaFacade;
 use Thelia\Model\Lang;
 use Thelia\Model\ProductPriceQuery;
 use Thelia\Model\ProductQuery;
@@ -44,6 +51,8 @@ trait ImportTestSupport
 {
     private array $temporaryFiles = [];
     private array $results = [];
+    private ?HttpClientInterface $imageClient = null;
+    private ?string $imagesDirectory = null;
 
     protected function tearDown(): void
     {
@@ -61,7 +70,7 @@ trait ImportTestSupport
         return implode("\n", array_map(static fn (array $row): string => implode($delimiter, $row), $rows))."\n";
     }
 
-    private function importCsv(string $content, ImportMode $mode = ImportMode::CreateOrUpdate, bool $dryRun = false, ?string $decimalSeparator = null, ?ImportMapping $mapping = null, ?\Closure $onRow = null): CsvImporterJob
+    private function importCsv(string $content, ImportMode $mode = ImportMode::CreateOrUpdate, bool $dryRun = false, ?string $decimalSeparator = null, ?ImportMapping $mapping = null, ?\Closure $onRow = null, bool $imagesOnly = false): CsvImporterJob
     {
         $path = sys_get_temp_dir().'/csv-importer-it-'.bin2hex(random_bytes(6)).'.csv';
         file_put_contents($path, $content);
@@ -75,7 +84,7 @@ trait ImportTestSupport
         $this->runner()->run($job, function ($result) use ($onRow): void {
             $this->results[] = $result;
             null === $onRow || $onRow($result);
-        });
+        }, $this->imagesDirectory, $imagesOnly);
 
         $job->reload();
 
@@ -98,6 +107,7 @@ trait ImportTestSupport
             new RowProcessor($container->get(ProductFacade::class), $container->get(PSEFacade::class), new NumberParser(), new HtmlCleaner()),
             $lookups,
             $this->locks(),
+            new ImagePass(new ImageSourceParser(), new ImageFetcher($this->imageClient ?? new MockHttpClient(static fn () => throw new \LogicException('No image should be requested'))), new ProductImageLoader($container->get(MediaFacade::class)), new ImportJobRepository()),
         );
     }
 

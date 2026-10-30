@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace CsvImporter\Import;
 
+use CsvImporter\Image\ImagePass;
 use CsvImporter\Job\ImportJobRepository;
 use CsvImporter\Lookup\CatalogLookupFactory;
 use CsvImporter\Mapping\CatalogField;
@@ -42,6 +43,7 @@ final readonly class CatalogImportRunner
         private RowProcessor $processor,
         private CatalogLookupFactory $lookups,
         private LockFactory $locks,
+        private ImagePass $images,
     ) {
     }
 
@@ -49,7 +51,7 @@ final readonly class CatalogImportRunner
 
     private const LOCK_TTL_SECONDS = 21600;
 
-    public function run(CsvImporterJob $job, ?\Closure $onRow = null): void
+    public function run(CsvImporterJob $job, ?\Closure $onRow = null, ?string $imagesDirectory = null, bool $imagesOnly = false): void
     {
         if (!$this->jobs->claim($job)) {
             return;
@@ -110,7 +112,8 @@ final readonly class CatalogImportRunner
         try {
             $options = new ImportOptions($mode, $dryRun, Lang::getDefaultLanguage()->getLocale(), Currency::getDefaultCurrency()->getId(), $profile->decimalSeparator);
             $this->jobs->markRunning($job, $this->count($reader));
-            $this->process($job, $reader, $profile->mapping, $options, $onRow);
+            $imagesOnly || $this->process($job, $reader, $profile->mapping, $options, $onRow);
+            $this->images->run($job, $reader, $profile->mapping, $dryRun, $options->locale, $imagesDirectory, !$imagesOnly);
             $this->jobs->markDone($job);
         } catch (UnreadableFileException $unreadable) {
             $this->jobs->markFailed($job, new ReportMessage($unreadable->getMessage(), $unreadable->parameters));
