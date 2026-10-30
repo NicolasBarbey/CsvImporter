@@ -92,6 +92,18 @@ final class ImportScreensTest extends WebIntegrationTestCase
         self::assertSame('Catalog import', trim($page->filter('h1')->text()));
     }
 
+    public function testTheToolsMenuOffersTheScreenOnlyToAnAdminWhoMayView(): void
+    {
+        $this->loginAs($this->factory->admin());
+        $page = $this->get('/admin/tools');
+        self::assertCount(1, $page->filter('a#csv-importer-menu-entry[href$="/admin/csv-importer"]'));
+
+        $this->loginAs($this->factory->restrictedAdmin(['admin.tools' => [AccessManager::VIEW]]));
+        $page = $this->get('/admin/tools');
+        self::assertCount(1, $page->filter('[data-testid="bo-nav-tools"]'));
+        self::assertCount(0, $page->filter('#csv-importer-menu-entry'));
+    }
+
     public function testWithoutTheModuleAccessTheScreenAndEveryActionAreForbidden(): void
     {
         $this->loginAs($this->factory->restrictedAdmin([]));
@@ -99,8 +111,10 @@ final class ImportScreensTest extends WebIntegrationTestCase
         $this->get('/admin/csv-importer');
         self::assertResponseStatusCodeSame(403);
 
-        $this->get('/admin/tools');
-        self::assertCount(0, $this->client->getCrawler()->filter('[data-testid="csv-importer-tools-entry"]'));
+        $this->loginAs($this->factory->restrictedAdmin(['admin.tools' => [AccessManager::VIEW]]));
+        $page = $this->get('/admin/tools');
+        self::assertCount(1, $page->filter('[data-testid="bo-nav-tools"]'));
+        self::assertCount(0, $page->filter('[data-testid="csv-importer-tools-entry"]'));
 
         $this->post('/admin/csv-importer/upload', ['mode' => 'create_or_update', '_token' => 'x'], $this->upload("Référence;Titre\nF-1;x\n"));
         self::assertResponseStatusCodeSame(403);

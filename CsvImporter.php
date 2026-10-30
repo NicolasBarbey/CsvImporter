@@ -14,8 +14,10 @@ declare(strict_types=1);
 
 namespace CsvImporter;
 
+use CsvImporter\Hook\StaleHookPurger;
 use CsvImporter\Image\ImageHttpClientFactory;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ServicesConfigurator;
+use Propel\Runtime\Connection\ConnectionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Thelia\Module\BaseModule;
 
@@ -34,5 +36,15 @@ class CsvImporter extends BaseModule
 
         $servicesConfigurator->set('csv_importer.image_http_client', HttpClientInterface::class)
             ->factory([ImageHttpClientFactory::class, 'create']);
+    }
+
+    public function update($currentVersion, $newVersion, ?ConnectionInterface $con = null): void
+    {
+        (new StaleHookPurger())->purge(self::getModuleId());
+    }
+
+    public function postActivation(?ConnectionInterface $con = null): void
+    {
+        (new StaleHookPurger())->purge(self::getModuleId());
     }
 }

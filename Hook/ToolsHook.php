@@ -16,15 +16,19 @@ namespace CsvImporter\Hook;
 
 use CsvImporter\Admin\ScreenAccess;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Thelia\Core\Event\Hook\HookRenderBlockEvent;
 use Thelia\Core\Event\Hook\HookRenderEvent;
 use Thelia\Core\Hook\BaseHook;
 use Thelia\Core\Security\AccessManager;
 use Thelia\Core\Template\Parser\ParserResolver;
+use Thelia\Core\Translation\Translator;
 
 final class ToolsHook extends BaseHook
 {
     public function __construct(
         private readonly ScreenAccess $access,
+        private readonly UrlGeneratorInterface $urls,
         ?EventDispatcherInterface $dispatcher = null,
         ?ParserResolver $parserResolver = null,
     ) {
@@ -34,6 +38,9 @@ final class ToolsHook extends BaseHook
     public static function getSubscribedHooks(): array
     {
         return [
+            'main.top-menu-tools' => [
+                ['type' => 'back', 'method' => 'onMainTopMenuTools'],
+            ],
             'tools.col2-bottom' => [
                 ['type' => 'back', 'method' => 'onToolsDataTransfer'],
             ],
@@ -47,5 +54,19 @@ final class ToolsHook extends BaseHook
         }
 
         $event->add($this->render('CsvImporter/tools_entry.html.twig'));
+    }
+
+    public function onMainTopMenuTools(HookRenderBlockEvent $event): void
+    {
+        if (!$this->access->can(AccessManager::VIEW)) {
+            return;
+        }
+
+        $event->add([
+            'id' => 'csv-importer-menu-entry',
+            'class' => '',
+            'url' => $this->urls->generate('csvimporter.index'),
+            'title' => Translator::getInstance()->trans('Catalog import', [], 'csvimporter.bo.default-twig'),
+        ]);
     }
 }
