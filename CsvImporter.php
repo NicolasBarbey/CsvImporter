@@ -14,10 +14,6 @@ class CsvImporter extends BaseModule
                 __DIR__.'/I18n/*',
                 __DIR__.'/Model/*',
                 __DIR__.'/Tests/*',
-                __DIR__.'/Service/*',
-                __DIR__.'/Command/*',
-                __DIR__.'/Controller/*',
-                __DIR__.'/Hook/*',
             ])
             ->autowire(true)
             ->autoconfigure(true);
