@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace CsvImporter\Controller\Admin;
 
+use CsvImporter\Admin\ImageArchiveExtractor;
 use CsvImporter\Admin\JobStarter;
 use CsvImporter\Admin\MappingFormReader;
 use CsvImporter\Admin\ReportPresenter;
@@ -94,6 +95,7 @@ final readonly class ImportScreenController
             'jobs' => $this->jobs->recent(self::RECENT_JOBS),
             'modes' => ImportMode::cases(),
             'max_megabytes' => UploadStore::MAX_BYTES / 1024 / 1024,
+            'images_megabytes' => ImageArchiveExtractor::MAX_ARCHIVE_BYTES / 1024 / 1024,
             'can_create' => $this->access->can(AccessManager::CREATE),
         ]));
     }
@@ -121,10 +123,18 @@ final readonly class ImportScreenController
             return $this->back($request, 'csvimporter.index', [], $refused->getMessage(), $refused->parameters);
         }
 
+        try {
+            $this->uploads->storeImages($this->uploadedImages($request), $stored['path']);
+        } catch (UploadRefused $refused) {
+            $this->uploads->discard($stored['path']);
+
+            return $this->back($request, 'csvimporter.index', [], $refused->getMessage(), $refused->parameters);
+        }
+
         $profile = $this->profileForUpload($request, $stored['name'], $stored['headers']);
 
         if ($profile instanceof ReportMessage) {
-            @unlink($stored['path']);
+            $this->uploads->discard($stored['path']);
 
             return $this->back($request, 'csvimporter.index', [], $profile->key, $profile->parameters);
         }
@@ -132,7 +142,7 @@ final readonly class ImportScreenController
         try {
             $job = $this->jobs->createDraft((int) $profile->id, $stored['path'], $stored['name'], $mode, $this->access->adminId());
         } catch (\Throwable $failure) {
-            @unlink($stored['path']);
+            $this->uploads->discard($stored['path']);
 
             throw $failure;
         }
@@ -355,6 +365,13 @@ final readonly class ImportScreenController
     private function uploadedFile(Request $request): ?UploadedFile
     {
         $file = $request->files->get('file');
+
+        return $file instanceof UploadedFile ? $file : null;
+    }
+
+    private function uploadedImages(Request $request): ?UploadedFile
+    {
+        $file = $request->files->get('images');
 
         return $file instanceof UploadedFile ? $file : null;
     }

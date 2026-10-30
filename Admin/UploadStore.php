@@ -31,8 +31,10 @@ final readonly class UploadStore
     public const MAX_COLUMNS = 200;
     private const MAX_NAME_LENGTH = 120;
 
-    public function __construct(#[Autowire('%kernel.project_dir%')] private string $projectDirectory)
-    {
+    public function __construct(
+        #[Autowire('%kernel.project_dir%')] private string $projectDirectory,
+        private ImageArchiveExtractor $archives,
+    ) {
     }
 
     /**
@@ -80,12 +82,60 @@ final readonly class UploadStore
         return ['path' => $path, 'name' => $this->displayName($file->getClientOriginalName()), 'headers' => $headers];
     }
 
+    /**
+     * Unpacks the images archive beside the staged file, where the job finds it again by the name of the file.
+     *
+     * @throws UploadRefused
+     */
+    public function storeImages(?UploadedFile $archive, string $stagedPath): void
+    {
+        if (null === $archive) {
+            return;
+        }
+
+        if (!$archive->isValid()) {
+            throw new UploadRefused(\UPLOAD_ERR_INI_SIZE === $archive->getError() || \UPLOAD_ERR_FORM_SIZE === $archive->getError() ? 'The images archive is larger than the server accepts' : 'The images archive could not be uploaded');
+        }
+
+        if ($archive->getSize() > ImageArchiveExtractor::MAX_ARCHIVE_BYTES) {
+            throw new UploadRefused('The images archive is larger than %limit MB', ['%limit' => (string) (ImageArchiveExtractor::MAX_ARCHIVE_BYTES / 1024 / 1024)]);
+        }
+
+        if ('zip' !== strtolower($archive->getClientOriginalExtension())) {
+            throw new UploadRefused('The images archive must be a .zip file');
+        }
+
+        $this->archives->extract($archive->getPathname(), $this->imagesPathOf($stagedPath));
+    }
+
+    public function imagesDirectoryOf(string $stagedPath): ?string
+    {
+        if (!$this->owns($stagedPath)) {
+            return null;
+        }
+
+        $directory = $this->imagesPathOf($stagedPath);
+
+        return is_dir($directory) && !is_link($directory) ? $directory : null;
+    }
+
+    public function discard(string $stagedPath): void
+    {
+        @unlink($stagedPath);
+        $this->archives->remove($this->imagesPathOf($stagedPath));
+    }
+
     public function owns(string $path): bool
     {
         $directory = realpath($this->directory());
         $real = realpath($path);
 
         return false !== $directory && false !== $real && str_starts_with($real, $directory.\DIRECTORY_SEPARATOR) && is_file($real);
+    }
+
+    private function imagesPathOf(string $stagedPath): string
+    {
+        return substr($stagedPath, 0, -\strlen('.csv')).'.images';
     }
 
     private function directory(): string

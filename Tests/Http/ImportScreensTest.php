@@ -14,11 +14,14 @@ declare(strict_types=1);
 
 namespace CsvImporter\Tests\Http;
 
+use CsvImporter\Admin\ImageArchiveExtractor;
 use CsvImporter\Admin\JobStarter;
+use CsvImporter\Admin\UploadStore;
 use CsvImporter\CsvImporter;
 use CsvImporter\Import\CatalogImportRunner;
 use CsvImporter\Model\CsvImporterJob;
 use CsvImporter\Model\CsvImporterJobQuery;
+use CsvImporter\Model\CsvImporterJobRowQuery;
 use CsvImporter\Model\CsvImporterProfileQuery;
 use CsvImporter\Model\Map\CsvImporterJobTableMap;
 use CsvImporter\Profile\ProfileRepository;
@@ -31,6 +34,7 @@ use Thelia\Model\Admin;
 use Thelia\Model\AdminLogQuery;
 use Thelia\Model\Module;
 use Thelia\Model\ModuleQuery;
+use Thelia\Model\ProductImageQuery;
 use Thelia\Model\ProductQuery;
 use Thelia\Model\ProfileModule;
 use Thelia\Test\FixtureFactory;
@@ -69,6 +73,7 @@ final class ImportScreensTest extends WebIntegrationTestCase
 
             if (str_contains($path, '/var/csv-importer/uploads/')) {
                 @unlink($path);
+                (new ImageArchiveExtractor())->remove(substr($path, 0, -4).'.images');
             }
         }
 
@@ -379,13 +384,83 @@ final class ImportScreensTest extends WebIntegrationTestCase
         $this->getPropelConnection()->exec('UPDATE csv_importer_job SET created_at = DATE_SUB(NOW(), INTERVAL 1 HOUR) WHERE id = '.(int) $real->getId());
         CsvImporterJobTableMap::clearInstancePool();
 
-        $command = new \CsvImporter\Command\RunJobCommand($this->getService(CatalogImportRunner::class), new \CsvImporter\Job\ImportJobRepository(), new ProfileRepository());
+        $command = new \CsvImporter\Command\RunJobCommand($this->getService(CatalogImportRunner::class), new \CsvImporter\Job\ImportJobRepository(), new ProfileRepository(), $this->uploadStore());
         $command->setContainer(static::getContainer());
         $tester = new \Symfony\Component\Console\Tester\CommandTester($command);
         $tester->execute(['job' => (string) $real->getId()]);
 
         self::assertSame('failed', CsvImporterJobQuery::create()->findPk($real->getId())->getStatus());
         self::assertNull(ProductQuery::create()->findOneByRef('SCR-1'));
+    }
+
+    public function testAnImagesArchiveIsUnpackedBesideTheStagedFileAndOutOfTheDocumentRoot(): void
+    {
+        $this->loginAs($this->factory->admin());
+        $this->get('/admin/csv-importer');
+
+        $this->post('/admin/csv-importer/upload', ['mode' => 'create_or_update', 'profile' => 'new', 'profile_name' => 'zip-'.bin2hex(random_bytes(4)), '_token' => $this->token()], $this->upload($this->products()), $this->zip(['mug.png' => $this->png(), 'photos/tasse.png' => $this->png('x')]));
+
+        $job = $this->latestJob();
+        $images = substr($job->getSourcePath(), 0, -4).'.images';
+
+        self::assertStringContainsString('/var/csv-importer/uploads/', $images);
+        self::assertFileExists($images.'/mug.png');
+        self::assertFileExists($images.'/photos/tasse.png');
+        self::assertSame($images, $this->uploadStore()->imagesDirectoryOf($job->getSourcePath()));
+    }
+
+    /**
+     * @param ?array<string, string> $files
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('refusedArchives')]
+    public function testARefusedImagesArchiveCreatesNoJobAndLeavesNothingBehind(?array $files, string $name, ?string $raw): void
+    {
+        $archive = self::archiveUpload($files, $name, $raw);
+        $this->temporaryFiles[] = $archive->getPathname();
+        $this->loginAs($this->factory->admin());
+        $this->get('/admin/csv-importer');
+
+        $this->post('/admin/csv-importer/upload', ['mode' => 'create_or_update', 'profile' => 'new', '_token' => $this->token()], $this->upload($this->products()), $archive);
+
+        self::assertResponseRedirects('/admin/csv-importer');
+        self::assertSame(0, CsvImporterJobQuery::create()->count());
+        self::assertSame([], $this->storedFiles());
+        $this->client->followRedirect();
+        self::assertSelectorExists('[data-testid="bo-flash-error"]');
+    }
+
+    /**
+     * @return iterable<string, array{?array<string, string>, string, ?string}>
+     */
+    public static function refusedArchives(): iterable
+    {
+        yield 'path that leaves the folder' => [['../evil.png' => 'x'], 'images.zip', null];
+        yield 'not a zip' => [null, 'images.zip', 'plain text'];
+        yield 'wrong extension' => [['a.png' => 'x'], 'images.tar', null];
+    }
+
+    public function testTheImagesOfTheArchiveReachTheJobRunInTheBackground(): void
+    {
+        $this->loginAs($this->factory->admin());
+        $this->get('/admin/csv-importer');
+        $csv = "Référence;Titre;Prix HT;Catégorie;Image\nZIP-1;Mug;12,50;Cuisine ZIP;photos/mug.png\nZIP-2;Tasse;3,00;Cuisine ZIP;absent.png\n";
+        $this->post('/admin/csv-importer/upload', ['mode' => 'create_or_update', 'profile' => 'new', 'profile_name' => 'zip-'.bin2hex(random_bytes(4)), '_token' => $this->token()], $this->upload($csv), $this->zip(['photos/mug.png' => $this->png()]));
+        $draft = $this->latestJob();
+        $this->post('/admin/csv-importer/job/'.$draft->getId().'/prepare', $this->mappingOf($draft) + ['mode' => 'create_or_update', 'intent' => 'simulate', '_token' => $this->token()]);
+        $simulation = $this->latestJob();
+        $this->getService(CatalogImportRunner::class)->run($simulation, null, $this->uploadStore()->imagesDirectoryOf($simulation->getSourcePath()));
+        $simulation->reload();
+
+        $lines = array_map(static fn ($line): string => (string) $line->getMessage(), CsvImporterJobRowQuery::create()->filterByJobId($simulation->getId())->filterByOutcome('image')->find()->getData());
+        self::assertCount(1, $lines, 'only the file the archive does not hold is refused');
+        self::assertStringContainsString('absent.png', $lines[0]);
+        self::assertStringContainsString('is not in the images directory', $lines[0]);
+
+        $this->post('/admin/csv-importer/job/'.$simulation->getId().'/run', ['confirm' => '1', '_token' => $this->token()]);
+        $this->runInTheBackground($this->latestJob());
+
+        self::assertSame(1, ProductImageQuery::create()->filterByProductId(ProductQuery::create()->findOneByRef('ZIP-1')->getId())->count());
+        self::assertSame(0, ProductImageQuery::create()->filterByProductId(ProductQuery::create()->findOneByRef('ZIP-2')->getId())->count());
     }
 
     public function testAJobThatDoesNotMoveCanBeAbandonedAndOnlyThen(): void
@@ -632,6 +707,57 @@ final class ImportScreensTest extends WebIntegrationTestCase
         return glob(\dirname(__DIR__, 5).'/var/csv-importer/uploads/*') ?: [];
     }
 
+    private function uploadStore(): UploadStore
+    {
+        return new UploadStore(\dirname(__DIR__, 5), new ImageArchiveExtractor());
+    }
+
+    private function runInTheBackground(CsvImporterJob $job): void
+    {
+        $command = new \CsvImporter\Command\RunJobCommand($this->getService(CatalogImportRunner::class), new \CsvImporter\Job\ImportJobRepository(), new ProfileRepository(), $this->uploadStore());
+        $command->setContainer(static::getContainer());
+        (new \Symfony\Component\Console\Tester\CommandTester($command))->execute(['job' => (string) $job->getId()]);
+    }
+
+    private function png(string $variant = ''): string
+    {
+        return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', true).$variant;
+    }
+
+    /**
+     * @param array<string, string> $files
+     */
+    private function zip(array $files, string $name = 'images.zip'): UploadedFile
+    {
+        $archive = self::archiveUpload($files, $name);
+        $this->temporaryFiles[] = $archive->getPathname();
+
+        return $archive;
+    }
+
+    /**
+     * @param ?array<string, string> $files
+     */
+    private static function archiveUpload(?array $files, string $name, ?string $raw = null): UploadedFile
+    {
+        $path = sys_get_temp_dir().'/csv-importer-archive-'.bin2hex(random_bytes(6));
+
+        if (null !== $raw) {
+            file_put_contents($path, $raw);
+        } else {
+            $zip = new \ZipArchive();
+            $zip->open($path, \ZipArchive::CREATE);
+
+            foreach ($files as $entry => $content) {
+                $zip->addFromString($entry, $content);
+            }
+
+            $zip->close();
+        }
+
+        return new UploadedFile($path, $name, 'application/zip', null, true);
+    }
+
     private function token(): string
     {
         $this->token ??= (string) $this->get('/admin/csv-importer')->filter('meta[name="bo-token"]')->attr('content');
@@ -656,12 +782,14 @@ final class ImportScreensTest extends WebIntegrationTestCase
     /**
      * @param array<string, mixed> $parameters
      */
-    private function post(string $uri, array $parameters, ?UploadedFile $file = null): Crawler
+    private function post(string $uri, array $parameters, ?UploadedFile $file = null, ?UploadedFile $images = null): Crawler
     {
         // The browser kit leaves the raw body empty: give it, as a browser does, so that what is logged is the real thing
         $raw = null === $file ? http_build_query($parameters) : null;
+        $files = null === $file ? [] : ['file' => $file];
+        null === $images || $files['images'] = $images;
 
-        return $this->send('POST', $uri, $parameters, null === $file ? [] : ['file' => $file], $raw);
+        return $this->send('POST', $uri, $parameters, $files, $raw);
     }
 
     private function send(string $method, string $uri, array $parameters = [], array $files = [], ?string $content = null): Crawler

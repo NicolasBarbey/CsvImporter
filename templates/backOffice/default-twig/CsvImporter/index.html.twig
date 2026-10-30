@@ -30,6 +30,11 @@
                             <input type="file" class="form-control" id="csv-importer-file" name="file" accept=".csv,.tsv,.txt" required aria-describedby="csv-importer-file-help">
                             <div id="csv-importer-file-help" class="form-text">{{ 'One product per line, the first line names the columns. %limit% MB at most. Nothing is written before you have read the simulation.'|trans({'%limit%': max_megabytes}, domain) }}</div>
                         </div>
+                        <div class="mb-3">
+                            <label for="csv-importer-images" class="form-label">{{ 'Images archive (optional)'|trans({}, domain) }}</label>
+                            <input type="file" class="form-control" id="csv-importer-images" name="images" accept=".zip" aria-describedby="csv-importer-images-help">
+                            <div id="csv-importer-images-help" class="form-text">{{ 'A .zip of the images named in the image column. %limit% MB at most. Without it, only web addresses are loaded.'|trans({'%limit%': images_megabytes}, domain) }}</div>
+                        </div>
                         <div class="row g-3 mb-3">
                             <div class="col-md-6">
                                 <label for="csv-importer-profile" class="form-label">{{ 'Column mapping'|trans({}, domain) }}</label>

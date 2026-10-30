@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace CsvImporter\Command;
 
+use CsvImporter\Admin\UploadStore;
 use CsvImporter\Import\CatalogImportRunner;
 use CsvImporter\Job\ImportJobRepository;
 use CsvImporter\Job\JobStatus;
@@ -36,6 +37,7 @@ final class RunJobCommand extends ContainerAwareCommand
         private readonly CatalogImportRunner $runner,
         private readonly ImportJobRepository $jobs,
         private readonly ProfileRepository $profiles,
+        private readonly UploadStore $uploads,
     ) {
         parent::__construct();
     }
@@ -71,7 +73,7 @@ final class RunJobCommand extends ContainerAwareCommand
             return self::FAILURE;
         }
 
-        $this->runner->run($job);
+        $this->runner->run($job, null, $this->uploads->imagesDirectoryOf($job->getSourcePath()));
         $job->reload();
 
         return JobStatus::Done->value === $job->getStatus() ? self::SUCCESS : self::FAILURE;
