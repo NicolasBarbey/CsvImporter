@@ -139,6 +139,18 @@ final class CatalogImportTest extends IntegrationTestCase
         self::assertSame(10.5, (float) $this->priceOf('CSVIT-5'));
     }
 
+    public function testAnUnchangedProductKeepsItsModificationDate(): void
+    {
+        $this->importCsv($this->tenProducts('10,50'));
+        $this->getPropelConnection()->exec("UPDATE product SET updated_at = '2020-01-02 03:04:05' WHERE ref LIKE 'CSVIT-%'");
+        \Thelia\Model\Map\ProductTableMap::clearInstancePool();
+
+        $rerun = $this->importCsv($this->withPrices(['1' => '5']));
+
+        self::assertSame(1, $rerun->getUpdatedRows());
+        self::assertSame('2020-01-02 03:04:05', \Thelia\Model\ProductQuery::create()->findOneByRef('CSVIT-5')->getUpdatedAt('Y-m-d H:i:s'));
+    }
+
     private function withPrices(array $prices): string
     {
         $rows = [self::HEADER];
