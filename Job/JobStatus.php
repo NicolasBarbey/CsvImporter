@@ -16,6 +16,7 @@ namespace CsvImporter\Job;
 
 enum JobStatus: string
 {
+    case Draft = 'draft';
     case Queued = 'queued';
     case Running = 'running';
     case Done = 'done';

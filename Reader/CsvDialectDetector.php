@@ -42,6 +42,16 @@ final readonly class CsvDialectDetector
         return new CsvDialect($this->findDelimiter($text, $truncated), $encoding, $hasBom);
     }
 
+    /**
+     * The dialect a profile asks for, completed by what the file shows for the rest.
+     */
+    public function resolve(string $path, ?string $delimiter, ?string $encoding): CsvDialect
+    {
+        $detected = $this->detect($path);
+
+        return new CsvDialect($delimiter ?? $detected->delimiter, $encoding ?? $detected->encoding, $detected->hasBom);
+    }
+
     private function decode(string $sample): array
     {
         if (str_starts_with($sample, "\xEF\xBB\xBF")) {

@@ -35,6 +35,11 @@ final readonly class ProfileRepository
         return $this->toProfile($row);
     }
 
+    public function updatedAt(int $id): ?\DateTimeInterface
+    {
+        return CsvImporterProfileQuery::create()->findPk($id)?->getUpdatedAt();
+    }
+
     public function find(int $id): ?ImportProfile
     {
         $row = CsvImporterProfileQuery::create()->findPk($id);

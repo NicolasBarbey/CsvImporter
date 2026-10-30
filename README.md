@@ -44,4 +44,12 @@ Chargées après le produit, dans un second passage : l'échec d'un télécharge
 - Un nombre à trois décimales exactes s'écrit avec un zéro de plus (`1,2340`) : `1,234` serait ambigu avec un millier.
 - Les descriptions sont nettoyées à l'écriture (balises et attributs non sûrs retirés) ; un texte déjà identique après nettoyage n'est pas réécrit.
 
-Les écrans du back-office ne sont pas livrés dans cette version.
+## Écrans du back-office
+
+Outils > Import de catalogue (thème `default-twig`). Dépôt du fichier, correspondance des colonnes, simulation, import réel, rapport (filtrable, téléchargeable en CSV).
+
+- Droit propre au module (profil > modules) : lecture = voir jobs et rapports ; création = déposer, enregistrer la correspondance, simuler ; modification = importer pour de vrai. Attention : le droit de modification du module donne l'écriture dans le catalogue (produits, caractéristiques, images), quels que soient les droits du profil sur ces ressources.
+- Écritures en POST, jeton dans le corps ; journal `admin_log` sans cookie ni contenu du fichier.
+- Un import réel exige une simulation terminée de moins de 24 h, la case de confirmation, une correspondance inchangée depuis la simulation, et n'est jouable qu'une fois par simulation. Le traitement part en processus de fond (`csvimporter:run-job <id>`) ; s'il n'a pas démarré, la page donne la commande à lancer. Un job immobile peut être abandonné.
+- Les fichiers déposés restent dans `var/csv-importer/uploads` (hors docroot, 0600), sans purge automatique. Plafonds : 50 Mo, 200 colonnes.
+- Limite connue : un changement de correspondance dans la même seconde que la demande d'import n'est pas détecté.

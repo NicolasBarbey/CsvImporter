@@ -216,8 +216,6 @@ final readonly class CatalogImportRunner
 
     private function dialectOf(string $path, ?string $delimiter, ?string $encoding): CsvDialect
     {
-        $detected = (new CsvDialectDetector())->detect($path);
-
-        return new CsvDialect($delimiter ?? $detected->delimiter, $encoding ?? $detected->encoding, $detected->hasBom);
+        return (new CsvDialectDetector())->resolve($path, $delimiter, $encoding);
     }
 }
