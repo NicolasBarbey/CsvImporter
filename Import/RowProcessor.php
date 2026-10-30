@@ -154,8 +154,8 @@ final readonly class RowProcessor
         $changed = false;
 
         $title = $this->text($row, $mapping, CatalogField::Title) ?? (string) $product->getTitle();
-        $chapo = $this->html($row, $mapping, CatalogField::Chapo) ?? $product->getChapo();
-        $description = $this->html($row, $mapping, CatalogField::Description) ?? $product->getDescription();
+        $chapo = $this->htmlOrStored($this->html($row, $mapping, CatalogField::Chapo), $product->getChapo());
+        $description = $this->htmlOrStored($this->html($row, $mapping, CatalogField::Description), $product->getDescription());
         $brandId = null === $brand ? $product->getBrandId() : $brand->id;
         $categoryId = null === $category ? $product->getDefaultCategoryId() : $category->id;
 
@@ -230,7 +230,7 @@ final readonly class RowProcessor
         $onSale = null === $numbers['promoPrice'] ? (bool) $saleElement->getPromo() : $numbers['promoPrice'] > 0;
         $weight = $numbers['weight'] ?? (float) $saleElement->getWeight();
         $stock = $numbers['stock'] ?? (float) $saleElement->getQuantity();
-        $ean ??= $saleElement->getEanCode();
+        $ean = null === $ean ? $saleElement->getEanCode() : Gtin::normalize($ean);
 
         $changed = null === $currentPrice
             || !$this->same($price, (float) $currentPrice->getPrice())
@@ -263,12 +263,17 @@ final readonly class RowProcessor
     {
         $changed = false;
 
-        foreach ($features as [$feature, $value]) {
-            $held = $feature->planned || $value->planned
+        foreach ($features as [$feature, $values]) {
+            $planned = $feature->planned || [] !== array_filter($values, static fn (Resolved $value): bool => $value->planned);
+            $held = $planned
                 ? []
                 : FeatureProductQuery::create()->filterByProductId($product->getId())->filterByFeatureId($feature->id)->find()->toKeyValue('Id', 'FeatureAvId');
+            $heldIds = array_map('intval', array_values($held));
+            $wantedIds = array_values(array_unique(array_map(static fn (Resolved $value): int => (int) $value->id, $values)));
+            sort($heldIds);
+            sort($wantedIds);
 
-            if ([$value->id] === array_values($held)) {
+            if (!$planned && $heldIds === $wantedIds) {
                 continue;
             }
 
@@ -286,7 +291,9 @@ final readonly class RowProcessor
                 $this->products->deleteFeatureValue($product->getId(), $feature->id);
             }
 
-            $this->products->setFeatureValue($product->getId(), new ProductFeatureDTO($feature->id, $value->id, false, $options->locale));
+            foreach ($values as $value) {
+                $this->products->setFeatureValue($product->getId(), new ProductFeatureDTO($feature->id, $value->id, false, $options->locale));
+            }
         }
 
         return $changed;
@@ -360,7 +367,7 @@ final readonly class RowProcessor
     {
         $ean = $this->text($row, $mapping, CatalogField::Ean);
 
-        if (null !== $ean && null !== Gtin::violationOfTypedCode($ean)) {
+        if (null !== $ean && ('' === Gtin::normalize($ean) || null !== Gtin::violationOfTypedCode($ean))) {
             throw new Refusal(new ReportMessage('The code "%ean" of the column "%column" is not a valid EAN or GTIN', ['%ean' => $ean, '%column' => (string) $mapping->headerFor(CatalogField::Ean)]));
         }
     }
@@ -404,17 +411,22 @@ final readonly class RowProcessor
         $features = [];
 
         foreach ($mapping->featureHeaders() as $header => $name) {
-            $value = trim($row->cells[$header] ?? '');
+            $titles = array_values(array_unique(array_filter(array_map('trim', explode('|', $row->cells[$header] ?? '')), static fn (string $title): bool => '' !== $title)));
 
-            if ('' === $value) {
+            if ([] === $titles) {
                 continue;
             }
 
             $feature = $lookup->feature($name);
-            $features[] = [$feature, $lookup->featureValue($name, $feature, $value)];
+            $features[] = [$feature, array_map(static fn (string $title): Resolved => $lookup->featureValue($name, $feature, $title), $titles)];
         }
 
         return $features;
+    }
+
+    private function htmlOrStored(?string $cleaned, ?string $stored): ?string
+    {
+        return null === $cleaned || (null !== $stored && trim($this->htmlCleaner->clean($stored)) === $cleaned) ? $stored : $cleaned;
     }
 
     private function html(SourceRow $row, ImportMapping $mapping, CatalogField $field): ?string

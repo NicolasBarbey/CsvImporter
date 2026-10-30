@@ -16,6 +16,7 @@ namespace CsvImporter\Import;
 
 use CsvImporter\Image\ImagePass;
 use CsvImporter\Job\ImportJobRepository;
+use CsvImporter\Job\JobStatus;
 use CsvImporter\Lookup\CatalogLookupFactory;
 use CsvImporter\Mapping\CatalogField;
 use CsvImporter\Mapping\MappingValidator;
@@ -52,6 +53,21 @@ final readonly class CatalogImportRunner
     private const LOCK_TTL_SECONDS = 21600;
 
     public function run(CsvImporterJob $job, ?\Closure $onRow = null, ?string $imagesDirectory = null, bool $imagesOnly = false): void
+    {
+        try {
+            $this->execute($job, $onRow, $imagesDirectory, $imagesOnly);
+        } catch (\Throwable $failure) {
+            $job->reload();
+
+            if (JobStatus::Running->value === $job->getStatus()) {
+                $this->jobs->markFailed($job, new ReportMessage('The import stopped on an unexpected error'));
+            }
+
+            throw $failure;
+        }
+    }
+
+    private function execute(CsvImporterJob $job, ?\Closure $onRow, ?string $imagesDirectory, bool $imagesOnly): void
     {
         if (!$this->jobs->claim($job)) {
             return;

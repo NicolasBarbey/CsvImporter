@@ -18,6 +18,7 @@ final class CsvFileReader
 {
     private const MAX_CELL_BYTES = 1048576;
     private const MAX_CELL_LINES = 200;
+    private const MAX_LINE_BYTES = 4194304;
     private const CHUNK_BYTES = 65536;
     private const SOURCE_CHARSETS = [
         'UTF-16LE' => 'UTF-16LE',
@@ -33,9 +34,14 @@ final class CsvFileReader
     {
         $this->dialect = $dialect ?? (new CsvDialectDetector())->detect($path);
 
+        if (1 !== \strlen($this->dialect->delimiter)) {
+            throw new UnreadableFileException('The delimiter must be a single character');
+        }
+
         $handle = $this->open();
 
         try {
+            $this->assertBounded($handle);
             [$header] = $this->readHeader($handle);
         } finally {
             fclose($handle);
@@ -44,7 +50,7 @@ final class CsvFileReader
         $columns = [];
 
         foreach ($header as $index => $name) {
-            $name = trim(ltrim($name, "\u{FEFF}"));
+            $name = CsvFormula::release(trim(ltrim($name, "\u{FEFF}")));
 
             if ('' === $name) {
                 continue;
@@ -111,7 +117,7 @@ final class CsvFileReader
         $cells = [];
 
         foreach ($this->columns as $index => $name) {
-            $cell = trim((string) $record[$index]);
+            $cell = CsvFormula::release(trim((string) $record[$index]));
 
             if (!mb_check_encoding($cell, 'UTF-8')) {
                 return new SourceRow($line, [], 'The line holds characters that are not valid in %encoding', ['%encoding' => $this->dialect->encoding]);
@@ -121,6 +127,85 @@ final class CsvFileReader
         }
 
         return new SourceRow($line, $cells);
+    }
+
+    private function assertBounded($handle): void
+    {
+        $start = ftell($handle);
+        $stops = $this->dialect->delimiter."\r\n";
+        $state = 'start';
+        $cell = 0;
+        $line = 0;
+        $carry = '';
+
+        while (!feof($handle) || '' !== $carry) {
+            $buffer = $carry.(string) fread($handle, self::CHUNK_BYTES);
+            $last = feof($handle);
+            $carry = '';
+            $length = \strlen($buffer);
+            $position = 0;
+
+            while ($position < $length) {
+                if ('quoted' === $state) {
+                    $quote = strpos($buffer, '"', $position);
+
+                    if (false === $quote) {
+                        $cell += $length - $position;
+                        $position = $length;
+                    } elseif ($quote + 1 >= $length && !$last) {
+                        $cell += $quote - $position;
+                        $carry = '"';
+                        $position = $length;
+                    } elseif ($quote + 1 < $length && '"' === $buffer[$quote + 1]) {
+                        $cell += $quote - $position + 2;
+                        $position = $quote + 2;
+                    } else {
+                        $cell += $quote - $position;
+                        $position = $quote + 1;
+                        $state = 'plain';
+                    }
+
+                    if ($cell > self::MAX_CELL_BYTES) {
+                        throw new UnreadableFileException('A quoted cell is longer than 1 MB or its quote is never closed');
+                    }
+
+                    continue;
+                }
+
+                $char = $buffer[$position];
+
+                if ('start' === $state && '"' === $char) {
+                    $state = 'quoted';
+                    $cell = 0;
+                    ++$position;
+
+                    continue;
+                }
+
+                if ("\n" === $char || "\r" === $char || $this->dialect->delimiter === $char) {
+                    $state = 'start';
+                    $line = "\n" === $char ? 0 : $line + 1;
+                    ++$position;
+
+                    continue;
+                }
+
+                $jump = strcspn($buffer, $stops, $position);
+                $state = 'plain';
+                $line += $jump;
+                $position += $jump;
+
+                if ($line > self::MAX_LINE_BYTES) {
+                    throw new UnreadableFileException('A line is longer than 4 MB');
+                }
+            }
+        }
+
+        if ('quoted' === $state) {
+            throw new UnreadableFileException('A quoted cell is never closed');
+        }
+
+        fseek($handle, $start);
     }
 
     private function readHeader($handle): array

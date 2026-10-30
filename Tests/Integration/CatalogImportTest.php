@@ -19,6 +19,7 @@ use CsvImporter\Import\ImportMode;
 use CsvImporter\Job\ImportJobRepository;
 use CsvImporter\Mapping\CatalogField;
 use CsvImporter\Mapping\ColumnTarget;
+use CsvImporter\Mapping\HeaderGuesser;
 use CsvImporter\Mapping\ImportMapping;
 use Propel\Runtime\Propel;
 use Thelia\Domain\Catalog\Product\Identifier\Gtin;
@@ -438,7 +439,7 @@ final class CatalogImportTest extends IntegrationTestCase
             $lines[] = "CSVIT-$index;Chaise $index;10;Maison CSV";
         }
 
-        $job = $this->importCsv(implode("\n", $lines)."\n");
+        $job = $this->importCsv(implode("\n", $lines)."\n", mapping: ImportMapping::fromProposal((new HeaderGuesser())->guess(['Référence', 'Désignation', 'Prix HT', 'Famille'])));
 
         self::assertSame('failed', $job->getStatus());
         self::assertNull($this->product('CSVIT-1'));

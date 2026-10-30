@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace CsvImporter\Export;
 
 use CsvImporter\Mapping\CategoryPath;
+use CsvImporter\Reader\CsvFormula;
 use Propel\Runtime\Propel;
 use Thelia\Model\BrandQuery;
 use Thelia\Model\CategoryQuery;
@@ -41,7 +42,7 @@ final class CatalogExporter
      */
     public function export(string $path, string $locale, int $currencyId): array
     {
-        $handle = fopen($path, 'wb');
+        $handle = fopen($path, 'w');
 
         if (false === $handle) {
             throw new \RuntimeException('The export file cannot be written');
@@ -126,11 +127,11 @@ final class CatalogExporter
         $values = [];
 
         foreach ($held as $featureProduct) {
-            $values[$featureProduct->getFeatureId()] ??= $featureProduct->getFeatureAvId();
+            $values[$featureProduct->getFeatureId()][] = $featureProduct->getFeatureAvId();
         }
 
         foreach ($featureIds as $featureId) {
-            $line[] = isset($values[$featureId]) ? $this->featureValue($values[$featureId], $locale) : '';
+            $line[] = isset($values[$featureId]) ? implode('|', array_filter(array_map(fn (int $valueId): string => $this->featureValue($valueId, $locale), $values[$featureId]), static fn (string $title): bool => '' !== $title)) : '';
         }
 
         return array_map(static fn ($cell): string => (string) $cell, $line);
@@ -180,11 +181,13 @@ final class CatalogExporter
             return $value;
         }
 
-        return str_replace('.', ',', rtrim(rtrim($value, '0'), '.'));
+        [$whole, $fraction] = array_pad(explode('.', rtrim(rtrim($value, '0'), '.'), 2), 2, '');
+
+        return '' === $fraction ? $whole : $whole.','.(3 === \strlen($fraction) ? $fraction.'0' : $fraction);
     }
 
     private function write($handle, array $cells): void
     {
-        fputcsv($handle, $cells, ';', '"', '\\', "\n");
+        fputcsv($handle, array_map(CsvFormula::protect(...), $cells), ';', '"', '', "\n");
     }
 }

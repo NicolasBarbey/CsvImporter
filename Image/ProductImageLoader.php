@@ -38,8 +38,11 @@ final readonly class ProductImageLoader
             return false;
         }
 
-        $this->media->uploadImage(new ImageUploadDTO($productId, 'product', $image->file, $locale));
-        $image->discard();
+        try {
+            $this->media->uploadImage(new ImageUploadDTO($productId, 'product', $image->file, $locale));
+        } finally {
+            $image->discard();
+        }
 
         return true;
     }

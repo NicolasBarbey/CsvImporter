@@ -13,6 +13,8 @@ php Thelia csvimporter:import-catalog <fichier.csv> --mapping="Fournisseur X"
 - `--mapping=<id ou nom>` : réutilise un profil existant. L'un des deux est obligatoire.
 - `--mode=create_or_update` (défaut), `update_only` ou `create_only`.
 - `--dry-run` : simule. Même code que l'import réel, sans aucune écriture dans le catalogue.
+- `--images-dir=<dossier>` : dossier des fichiers nommés dans la colonne image (une URL http(s) ou un nom de fichier ; plusieurs séparés par `|`).
+- `--images-only` : charge seulement les images des produits déjà présents.
 
 ## Code de sortie
 
@@ -29,4 +31,17 @@ php Thelia csvimporter:import-catalog <fichier.csv> --mapping="Fournisseur X"
 - Une ligne fausse n'arrête pas l'import : elle est refusée avec son motif, les autres s'écrivent, chacune dans sa propre transaction.
 - Une cellule vide n'efface jamais le champ d'un produit existant.
 
-Les écrans du back-office, les images et l'export rechargeable ne sont pas livrés dans cette version.
+## Images
+
+Chargées après le produit, dans un second passage : l'échec d'un téléchargement ne bloque pas la création. Les adresses internes ou privées, les redirections et les schémas autres que http(s) sont refusés ; 10 Mo et 40 millions de pixels au plus ; types JPEG, PNG, GIF et WebP vérifiés sur le contenu. Une image déjà présente (même contenu) n'est pas ajoutée deux fois. La simulation n'appelle jamais le réseau.
+
+## Export
+
+`php Thelia csvimporter:export-catalog <fichier.csv>` écrit les produits simples dans le format que l'import relit (les produits à déclinaisons sont comptés et laissés de côté, les images ne sont pas exportées).
+
+- Une caractéristique à plusieurs valeurs s'écrit `Rouge|Bleu`, et l'import relit ce format.
+- Une cellule qui commencerait par `=`, `+`, `-` ou `@` (hors nombre) est préfixée d'une apostrophe à l'export pour ne pas s'exécuter dans un tableur ; l'import retire cette apostrophe.
+- Un nombre à trois décimales exactes s'écrit avec un zéro de plus (`1,2340`) : `1,234` serait ambigu avec un millier.
+- Les descriptions sont nettoyées à l'écriture (balises et attributs non sûrs retirés) ; un texte déjà identique après nettoyage n'est pas réécrit.
+
+Les écrans du back-office ne sont pas livrés dans cette version.

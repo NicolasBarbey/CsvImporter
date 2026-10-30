@@ -22,6 +22,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 final readonly class ImageFetcher
 {
     public const MAX_BYTES = 10 * 1024 * 1024;
+    public const MAX_PIXELS = 40000000;
 
     private const TYPES = [\IMAGETYPE_JPEG => 'jpg', \IMAGETYPE_PNG => 'png', \IMAGETYPE_GIF => 'gif', \IMAGETYPE_WEBP => 'webp'];
 
@@ -110,7 +111,7 @@ final readonly class ImageFetcher
             $response = $this->client->request('GET', $url, ['headers' => ['Accept' => 'image/*']]);
 
             if (200 !== $response->getStatusCode()) {
-                throw new ImageRefusal(new ReportMessage('The image "%source" answered with the status %status', ['%source' => $url, '%status' => (string) $response->getStatusCode()]));
+                throw new ImageRefusal(new ReportMessage('The image "%source" answered with the status %status', ['%source' => ImageSource::redact($url), '%status' => (string) $response->getStatusCode()]));
             }
 
             foreach ($this->client->stream($response) as $chunk) {
@@ -119,7 +120,7 @@ final readonly class ImageFetcher
                 if ($received > self::MAX_BYTES) {
                     $response->cancel();
 
-                    throw new ImageRefusal(new ReportMessage('The image "%source" is larger than %limit MB', ['%source' => $url, '%limit' => (string) (self::MAX_BYTES / 1024 / 1024)]));
+                    throw new ImageRefusal(new ReportMessage('The image "%source" is larger than %limit MB', ['%source' => ImageSource::redact($url), '%limit' => (string) (self::MAX_BYTES / 1024 / 1024)]));
                 }
 
                 fwrite($handle, $chunk->getContent());
@@ -131,7 +132,7 @@ final readonly class ImageFetcher
         } catch (\Throwable) {
             $this->discard($handle, $target);
 
-            throw new ImageRefusal(new ReportMessage('The image "%source" could not be downloaded', ['%source' => $url]));
+            throw new ImageRefusal(new ReportMessage('The image "%source" could not be downloaded', ['%source' => ImageSource::redact($url)]));
         }
 
         fclose($handle);
@@ -147,10 +148,15 @@ final readonly class ImageFetcher
 
     private function extensionOf(string $path): string
     {
-        $type = @getimagesize($path)[2] ?? null;
+        $size = @getimagesize($path);
+        $type = $size[2] ?? null;
 
         if (null === $type || !isset(self::TYPES[$type])) {
             throw new ImageRefusal(new ReportMessage('The file is not a JPEG, PNG, GIF or WebP image'));
+        }
+
+        if ($size[0] * $size[1] > self::MAX_PIXELS) {
+            throw new ImageRefusal(new ReportMessage('The image is larger than %limit million pixels', ['%limit' => (string) (self::MAX_PIXELS / 1000000)]));
         }
 
         return self::TYPES[$type];

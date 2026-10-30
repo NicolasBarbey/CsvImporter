@@ -96,7 +96,7 @@ final class ImportCatalogCommand extends ContainerAwareCommand
         $dryRun = (bool) $input->getOption('dry-run');
         $job = $this->jobs->create($profile->id, $path, basename($path), $mode, $dryRun, null);
 
-        $style->writeln(\sprintf('%s of "%s" with the profile "%s" (%s)', $dryRun ? 'Simulation' : 'Import', basename($path), $profile->name, $mode->value));
+        $style->writeln(\sprintf('%s of "%s" with the profile "%s" (%s)', $dryRun ? 'Simulation' : 'Import', OutputFormatter::escape(basename($path)), OutputFormatter::escape($profile->name), $mode->value));
 
         $this->runner->run($job, null, null === $input->getOption('images-dir') ? null : (string) $input->getOption('images-dir'), (bool) $input->getOption('images-only'));
         $job->reload();

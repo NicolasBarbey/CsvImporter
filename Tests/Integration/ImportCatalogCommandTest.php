@@ -130,4 +130,20 @@ final class ImportCatalogCommandTest extends IntegrationTestCase
         self::assertStringNotContainsString("\033[37;41m", $tester->getDisplay());
         self::assertStringContainsString('<error>X</error>', $tester->getDisplay());
     }
+
+    public function testTheNameOfTheFileCannotInjectConsoleFormatting(): void
+    {
+        $directory = sys_get_temp_dir().'/csv-importer-name-'.bin2hex(random_bytes(4));
+        mkdir($directory);
+        $path = $directory.'/<bg=red>x.csv';
+        file_put_contents($path, $this->csv([['Référence', 'Titre', 'Prix HT', 'Catégorie'], ['CMD-9', 'Mug', '1,00', 'Cuisine CMD']]));
+        $tester = $this->tester();
+
+        $tester->execute(['file' => $path, '--save-mapping' => $this->profileName(), '--dry-run' => true], ['decorated' => true]);
+        @unlink($path);
+        @rmdir($directory);
+
+        self::assertStringNotContainsString("\033[41m", $tester->getDisplay());
+        self::assertStringContainsString('<bg=red>x.csv', $tester->getDisplay());
+    }
 }

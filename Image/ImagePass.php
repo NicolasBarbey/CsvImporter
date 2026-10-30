@@ -22,6 +22,7 @@ use CsvImporter\Model\CsvImporterJob;
 use CsvImporter\Model\CsvImporterJobRowQuery;
 use CsvImporter\Reader\CsvFileReader;
 use CsvImporter\Report\ReportMessage;
+use Thelia\Log\Tlog;
 use Thelia\Model\ProductQuery;
 
 final readonly class ImagePass
@@ -81,6 +82,10 @@ final readonly class ImagePass
                 } catch (ImageRefusal $refusal) {
                     ++$refused;
                     $this->jobs->addLine($job, $row->lineNumber, 'image', $reference, $refusal->report);
+                } catch (\Throwable $failure) {
+                    ++$refused;
+                    Tlog::getInstance()->error(\sprintf('Catalog import, image of line %d: %s', $row->lineNumber, $failure::class));
+                    $this->jobs->addLine($job, $row->lineNumber, 'image', $reference, new ReportMessage('The image "%source" could not be added to the product', ['%source' => ImageSource::redact($source->location)]));
                 }
             }
         }

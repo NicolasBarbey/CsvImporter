@@ -59,6 +59,6 @@ final readonly class ImageSourceParser
 
     private function shorten(string $text): string
     {
-        return mb_strlen($text) > 120 ? mb_substr($text, 0, 120).'…' : $text;
+        return ImageSource::redact($text);
     }
 }

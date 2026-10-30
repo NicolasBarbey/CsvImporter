@@ -32,6 +32,8 @@ final class CatalogExportTest extends IntegrationTestCase
             ['EXP-1', 'Chaise "pliante" 😀', 'Courte', 'Longue', '12,5', '7', '1,25', 'Maison EXP > Cuisine EXP', 'Marque EXP', 'Gabarit EXP', '4006381333931', 'Rouge'],
             ['EXP-2', 'Table', '', '', '1234,56', '0', '', 'Maison EXP', '', '', '', ''],
             ['EXP-3', 'Étagère a>b', 'x', '<p>Paragraphe</p>', '3', '2', '0,5', 'Famille \> escapée', '', '', '', 'Bleu'],
+            ['EXP-4', '=HYPERLINK("http://x")', 'a', '<p class="c" style="color:red">Texte<br>suite</p>', '5,25', '1', '1,2340', 'Maison EXP', 'Marque \\"EXP4\\"', '', '4006381333-931', 'Rouge|Bleu'],
+            ['EXP-5', "'=déjà un apostrophe", '', '', '1,5', '3', '12,3450', 'Maison EXP', '', '', '', ''],
         ]);
     }
 
@@ -47,15 +49,22 @@ final class CatalogExportTest extends IntegrationTestCase
 
     private function ourLines(string $path): string
     {
-        $lines = [];
+        $in = fopen($path, 'r');
+        fseek($in, 3);
+        $out = fopen('php://memory', 'w+');
+        $header = true;
 
-        foreach (preg_split('/\R(?=(?:[^"]*"[^"]*")*[^"]*$)/', (string) file_get_contents($path)) as $line) {
-            if ('' !== $line && (str_starts_with($line, "\xEF\xBB\xBFRéférence") || str_starts_with($line, 'EXP-'))) {
-                $lines[] = $line;
+        while (false !== $record = fgetcsv($in, null, ';', '"', '')) {
+            if ($header || str_starts_with((string) $record[0], 'EXP-')) {
+                fputcsv($out, $record, ';', '"', '', "\n");
             }
+
+            $header = false;
         }
 
-        return implode("\n", $lines)."\n";
+        rewind($out);
+
+        return "\xEF\xBB\xBF".stream_get_contents($out);
     }
 
     public function testTheExportCarriesEveryImportedFieldInTheFormatTheImportReads(): void
@@ -71,7 +80,14 @@ final class CatalogExportTest extends IntegrationTestCase
             }
         }
 
-        self::assertCount(3, $rows);
+        self::assertCount(5, $rows);
+        self::assertSame('Rouge|Bleu', $rows['EXP-4']['C:Couleur']);
+        self::assertSame('1,2340', $rows['EXP-4']['Poids']);
+        self::assertSame('12,3450', $rows['EXP-5']['Poids']);
+        self::assertSame('Marque \\"EXP4\\"', $rows['EXP-4']['Marque']);
+        self::assertSame('4006381333931', $rows['EXP-4']['EAN']);
+        self::assertStringContainsString(';"\'=HYPERLINK(""http://x"")"', (string) file_get_contents($path));
+        self::assertSame('=HYPERLINK("http://x")', $rows['EXP-4']['Titre']);
         self::assertSame('Chaise "pliante" 😀', $rows['EXP-1']['Titre']);
         self::assertSame('12,5', $rows['EXP-1']['Prix HT']);
         self::assertSame('Maison EXP > Cuisine EXP', $rows['EXP-1']['Catégorie']);
@@ -89,7 +105,7 @@ final class CatalogExportTest extends IntegrationTestCase
 
         $job = $this->importCsv($first);
 
-        self::assertSame(3, $job->getUnchangedRows(), implode(' | ', array_map(static fn ($line): string => (string) $line->getMessage(), $this->reportLines($job, 'failed'))));
+        self::assertSame(5, $job->getUnchangedRows(), implode(' | ', array_map(static fn ($line): string => (string) $line->getMessage(), $this->reportLines($job, 'failed'))));
         self::assertSame(0, $job->getFailedRows());
 
         [, $second] = $this->exported();
