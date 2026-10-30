@@ -19,6 +19,11 @@ final class CategoryPath
     private const SEPARATOR = '>';
     private const ESCAPE = '\\';
 
+    public static function join(array $levels): string
+    {
+        return implode(' '.self::SEPARATOR.' ', array_map(static fn (string $level): string => str_replace([self::ESCAPE, self::SEPARATOR], [self::ESCAPE.self::ESCAPE, self::ESCAPE.self::SEPARATOR], $level), $levels));
+    }
+
     public static function split(string $path): array
     {
         $levels = [];
