@@ -15,17 +15,15 @@ declare(strict_types=1);
 namespace CsvImporter\Admin;
 
 use CsvImporter\Model\CsvImporterJob;
-use Symfony\Component\DependencyInjection\Attribute\AsAlias;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
 
 /**
  * Runs a job in a console process of its own, so that a long import neither holds a web
- * request nor dies with it. Without a queue worker (#281 is not on main) this is the only
- * way a screen can start one; the console command remains the fallback.
+ * request nor dies with it. It is what starts a job on a shop without a queue
+ * ({@see QueueJobStarter}); the console command remains the fallback.
  */
-#[AsAlias(JobStarter::class, public: true)]
 final readonly class BackgroundLauncher implements JobStarter
 {
     public function __construct(

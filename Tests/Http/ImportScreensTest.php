@@ -384,7 +384,7 @@ final class ImportScreensTest extends WebIntegrationTestCase
         $this->getPropelConnection()->exec('UPDATE csv_importer_job SET created_at = DATE_SUB(NOW(), INTERVAL 1 HOUR) WHERE id = '.(int) $real->getId());
         CsvImporterJobTableMap::clearInstancePool();
 
-        $command = new \CsvImporter\Command\RunJobCommand($this->getService(CatalogImportRunner::class), new \CsvImporter\Job\ImportJobRepository(), new ProfileRepository(), $this->uploadStore());
+        $command = new \CsvImporter\Command\RunJobCommand(new \CsvImporter\Job\ImportJobRepository(), new \CsvImporter\Job\QueuedJobExecutor($this->getService(CatalogImportRunner::class), new \CsvImporter\Job\ImportJobRepository(), new ProfileRepository(), $this->uploadStore()));
         $command->setContainer(static::getContainer());
         $tester = new \Symfony\Component\Console\Tester\CommandTester($command);
         $tester->execute(['job' => (string) $real->getId()]);
@@ -714,7 +714,7 @@ final class ImportScreensTest extends WebIntegrationTestCase
 
     private function runInTheBackground(CsvImporterJob $job): void
     {
-        $command = new \CsvImporter\Command\RunJobCommand($this->getService(CatalogImportRunner::class), new \CsvImporter\Job\ImportJobRepository(), new ProfileRepository(), $this->uploadStore());
+        $command = new \CsvImporter\Command\RunJobCommand(new \CsvImporter\Job\ImportJobRepository(), new \CsvImporter\Job\QueuedJobExecutor($this->getService(CatalogImportRunner::class), new \CsvImporter\Job\ImportJobRepository(), new ProfileRepository(), $this->uploadStore()));
         $command->setContainer(static::getContainer());
         (new \Symfony\Component\Console\Tester\CommandTester($command))->execute(['job' => (string) $job->getId()]);
     }

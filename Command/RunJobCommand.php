@@ -14,13 +14,10 @@ declare(strict_types=1);
 
 namespace CsvImporter\Command;
 
-use CsvImporter\Admin\UploadStore;
-use CsvImporter\Import\CatalogImportRunner;
 use CsvImporter\Job\ImportJobRepository;
+use CsvImporter\Job\JobRefusal;
 use CsvImporter\Job\JobStatus;
-use CsvImporter\Model\CsvImporterJob;
-use CsvImporter\Profile\ProfileRepository;
-use CsvImporter\Report\ReportMessage;
+use CsvImporter\Job\QueuedJobExecutor;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -34,10 +31,8 @@ use Thelia\Command\ContainerAwareCommand;
 final class RunJobCommand extends ContainerAwareCommand
 {
     public function __construct(
-        private readonly CatalogImportRunner $runner,
         private readonly ImportJobRepository $jobs,
-        private readonly ProfileRepository $profiles,
-        private readonly UploadStore $uploads,
+        private readonly QueuedJobExecutor $executor,
     ) {
         parent::__construct();
     }
@@ -60,34 +55,22 @@ final class RunJobCommand extends ContainerAwareCommand
             return self::INVALID;
         }
 
-        if (JobStatus::Queued->value !== $job->getStatus()) {
+        $refusal = $this->executor->execute($job);
+
+        if (JobRefusal::NotQueued === $refusal) {
             $output->writeln(\sprintf('The job is %s, only a queued job can be started.', $job->getStatus()));
 
             return self::FAILURE;
         }
 
-        if (0 === $job->getDryRun() && $this->mappingChangedSinceRequested($job)) {
-            $this->jobs->markFailed($job, new ReportMessage('The mapping changed after the import was requested: simulate again'));
+        if (JobRefusal::MappingChanged === $refusal) {
             $output->writeln('The mapping changed after the import was requested.');
 
             return self::FAILURE;
         }
 
-        $this->runner->run($job, null, $this->uploads->imagesDirectoryOf($job->getSourcePath()));
         $job->reload();
 
         return JobStatus::Done->value === $job->getStatus() ? self::SUCCESS : self::FAILURE;
-    }
-
-    /**
-     * The import runs the profile as it is when it starts, not as it was when the
-     * administrator asked: a change in between is a mapping nobody simulated. Whole seconds:
-     * a change within the second of the request is not seen.
-     */
-    private function mappingChangedSinceRequested(CsvImporterJob $job): bool
-    {
-        $updated = null === $job->getProfileId() ? null : $this->profiles->updatedAt($job->getProfileId());
-
-        return null === $updated || null === $job->getCreatedAt() || $updated->getTimestamp() > $job->getCreatedAt()->getTimestamp();
     }
 }
