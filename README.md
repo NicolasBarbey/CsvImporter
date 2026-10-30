@@ -44,6 +44,10 @@ Chargées après le produit, dans un second passage : l'échec d'un télécharge
 - Un nombre à trois décimales exactes s'écrit avec un zéro de plus (`1,2340`) : `1,234` serait ambigu avec un millier.
 - Les descriptions sont nettoyées à l'écriture (balises et attributs non sûrs retirés) ; un texte déjà identique après nettoyage n'est pas réécrit.
 
+Un fichier d'exemple est livré dans `Resources/example/catalog-example.csv` (10 lignes, dont une au prix illisible pour montrer le rapport).
+
+Un module déposé après l'installation de la boutique n'a pas ses tables après `module:activate` : lancer `php bin/console module:schema:apply CsvImporter`, puis vider le cache.
+
 ## Écrans du back-office
 
 Outils > Import de catalogue (thème `default-twig`). Dépôt du fichier, correspondance des colonnes, simulation, import réel, rapport (filtrable, téléchargeable en CSV).
