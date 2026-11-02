@@ -36,6 +36,10 @@ final class HeaderGuesserTest extends TestCase
         yield ['REF', CatalogField::Reference];
         yield ['Code produit', CatalogField::Reference];
         yield ['sku', CatalogField::Reference];
+        yield ['Réf fournisseur', CatalogField::Reference];
+        yield ['Référence fournisseur', CatalogField::Reference];
+        yield ['Qté dispo', CatalogField::Stock];
+        yield ['Quantité disponible', CatalogField::Stock];
         yield ['Désignation', CatalogField::Title];
         yield ['Titre', CatalogField::Title];
         yield ['Description courte', CatalogField::Chapo];
@@ -63,6 +67,16 @@ final class HeaderGuesserTest extends TestCase
 
         self::assertNull($proposal['Colour code']);
         self::assertNull($proposal['Prix TTC']);
+    }
+
+    public function testTheSupplierReferenceNeverTakesTheFieldFromTheProductReference(): void
+    {
+        $proposal = (new HeaderGuesser())->guess(['Réf fournisseur', 'Référence', 'Qté dispo', 'Stock']);
+
+        self::assertNull($proposal['Réf fournisseur']);
+        self::assertEquals(new ColumnTarget(CatalogField::Reference), $proposal['Référence']);
+        self::assertNull($proposal['Qté dispo']);
+        self::assertEquals(new ColumnTarget(CatalogField::Stock), $proposal['Stock']);
     }
 
     public function testAFieldIsProposedOnceAndTheFirstHeaderWins(): void
