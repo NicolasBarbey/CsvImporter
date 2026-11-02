@@ -27,6 +27,8 @@ use Thelia\Model\ProductQuery;
 
 final readonly class ImagePass
 {
+    private const TOUCH_STEP = 25;
+
     public function __construct(
         private ImageSourceParser $parser,
         private ImageFetcher $fetcher,
@@ -35,19 +37,23 @@ final readonly class ImagePass
     ) {
     }
 
-    public function run(CsvImporterJob $job, CsvFileReader $reader, ImportMapping $mapping, bool $dryRun, string $locale, ?string $imagesDirectory, bool $skipRefusedRows = true): void
+    public function run(CsvImporterJob $job, CsvFileReader $reader, ImportMapping $mapping, bool $dryRun, string $locale, ?string $imagesDirectory, bool $skipRefusedRows = true): bool
     {
         $header = $mapping->headerFor(CatalogField::Image);
         $referenceHeader = $mapping->headerFor(CatalogField::Reference);
 
         if (null === $header || null === $referenceHeader) {
-            return;
+            return true;
         }
 
         $left = $skipRefusedRows ? $this->refusedLines($job) : [];
-        $loaded = $already = $refused = $remote = 0;
+        $loaded = $already = $refused = $remote = $scanned = 0;
 
         foreach ($reader->rows() as $row) {
+            if (0 === ++$scanned % self::TOUCH_STEP && !$this->jobs->touch($job)) {
+                return false;
+            }
+
             $cell = trim($row->cells[$header] ?? '');
             $reference = trim($row->cells[$referenceHeader] ?? '');
 
@@ -71,6 +77,10 @@ final readonly class ImagePass
             }
 
             foreach ($sources as $source) {
+                if (!$this->jobs->touch($job)) {
+                    return false;
+                }
+
                 try {
                     if ($dryRun) {
                         $source->remote ? ++$remote : $this->fetcher->check($source, $imagesDirectory);
@@ -94,6 +104,8 @@ final readonly class ImagePass
             ? new ReportMessage('Images: %remote addresses would be downloaded, %refused refused', ['%remote' => (string) $remote, '%refused' => (string) $refused])
             : new ReportMessage('Images: %loaded added, %already already there, %refused refused', ['%loaded' => (string) $loaded, '%already' => (string) $already, '%refused' => (string) $refused]);
         $this->jobs->addLine($job, 0, 'info', null, $summary);
+
+        return true;
     }
 
     private function refusedLines(CsvImporterJob $job): array

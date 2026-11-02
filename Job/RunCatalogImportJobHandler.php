@@ -14,8 +14,13 @@ declare(strict_types=1);
 
 namespace CsvImporter\Job;
 
+use CsvImporter\Import\CatalogImportRunner;
+use CsvImporter\Import\ImportMode;
+use CsvImporter\Model\CsvImporterJob;
+use CsvImporter\Report\ReportMessage;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Thelia\Log\Tlog;
 use Thelia\Tools\URL;
 
 /**
@@ -36,8 +41,23 @@ final readonly class RunCatalogImportJobHandler
     {
         $job = $this->jobs->find($message->jobId);
 
-        if (null !== $job) {
-            $this->executor->execute($job);
+        if (null === $job) {
+            return;
         }
+
+        if (JobStatus::Failed->value === $job->getStatus() && $this->stoppedOnAnUnexpectedError($job) && ImportMode::CreateOnly->value !== $job->getMode()) {
+            $this->jobs->requeue($job);
+        }
+
+        $refusal = $this->executor->execute($job);
+
+        if (JobRefusal::NotQueued === $refusal && JobStatus::Failed->value === $job->getStatus()) {
+            Tlog::getInstance()->warning(\sprintf('Catalog import %d is not replayed: it failed for a reason a new delivery does not change', $job->getId()));
+        }
+    }
+
+    private function stoppedOnAnUnexpectedError(CsvImporterJob $job): bool
+    {
+        return (new ReportMessage(CatalogImportRunner::UNEXPECTED_ERROR))->toJson() === $job->getError();
     }
 }

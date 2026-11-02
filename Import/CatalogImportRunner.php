@@ -50,6 +50,8 @@ final readonly class CatalogImportRunner
 
     public const LOCK_KEY = 'csv-importer-catalog';
 
+    public const UNEXPECTED_ERROR = 'The import stopped on an unexpected error';
+
     private const LOCK_TTL_SECONDS = 21600;
 
     public function run(CsvImporterJob $job, ?\Closure $onRow = null, ?string $imagesDirectory = null, bool $imagesOnly = false): void
@@ -60,7 +62,7 @@ final readonly class CatalogImportRunner
             $job->reload();
 
             if (JobStatus::Running->value === $job->getStatus()) {
-                $this->jobs->markFailed($job, new ReportMessage('The import stopped on an unexpected error'));
+                $this->jobs->markFailed($job, new ReportMessage(self::UNEXPECTED_ERROR));
             }
 
             throw $failure;
@@ -128,14 +130,21 @@ final readonly class CatalogImportRunner
         try {
             $options = new ImportOptions($mode, $dryRun, Lang::getDefaultLanguage()->getLocale(), Currency::getDefaultCurrency()->getId(), $profile->decimalSeparator);
             $this->jobs->markRunning($job, $this->count($reader));
-            $imagesOnly || $this->process($job, $reader, $profile->mapping, $options, $onRow);
-            $this->images->run($job, $reader, $profile->mapping, $dryRun, $options->locale, $imagesDirectory, !$imagesOnly);
+
+            if (!$imagesOnly && !$this->process($job, $reader, $profile->mapping, $options, $onRow)) {
+                return;
+            }
+
+            if (!$this->images->run($job, $reader, $profile->mapping, $dryRun, $options->locale, $imagesDirectory, !$imagesOnly)) {
+                return;
+            }
+
             $this->jobs->markDone($job);
         } catch (UnreadableFileException $unreadable) {
             $this->jobs->markFailed($job, new ReportMessage($unreadable->getMessage(), $unreadable->parameters));
         } catch (\Throwable $failure) {
             Tlog::getInstance()->error(\sprintf('Catalog import %d stopped: %s: %s', $job->getId(), $failure::class, $failure->getMessage()));
-            $this->jobs->markFailed($job, new ReportMessage('The import stopped on an unexpected error'));
+            $this->jobs->markFailed($job, new ReportMessage(self::UNEXPECTED_ERROR));
 
             throw $failure;
         } finally {
@@ -153,7 +162,7 @@ final readonly class CatalogImportRunner
         $this->jobs->markFailed($job, new ReportMessage($summary));
     }
 
-    private function process(CsvImporterJob $job, CsvFileReader $reader, $mapping, ImportOptions $options, ?\Closure $onRow): void
+    private function process(CsvImporterJob $job, CsvFileReader $reader, $mapping, ImportOptions $options, ?\Closure $onRow): bool
     {
         $lookup = $this->lookups->create($options);
         $referenceHeader = $mapping->headerFor(CatalogField::Reference);
@@ -182,10 +191,16 @@ final readonly class CatalogImportRunner
 
             if (0 === $processed % self::PROGRESS_STEP) {
                 $this->jobs->saveProgress($job, $processed, $counts);
+
+                if (!$this->jobs->touch($job)) {
+                    return false;
+                }
             }
         }
 
         $this->jobs->saveProgress($job, $processed, $counts);
+
+        return true;
     }
 
     private function report(CsvImporterJob $job, RowResult $result): void

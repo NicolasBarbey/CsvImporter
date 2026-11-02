@@ -295,7 +295,12 @@ final readonly class ImportScreenController
             return $this->back($request, 'csvimporter.job', $target, 'Only a job that does not move any more can be abandoned');
         }
 
-        $this->jobs->abandon($job);
+        $idleSeconds = JobStatus::Queued->value === $job->getStatus() ? self::WAITING_SECONDS : self::STALLED_SECONDS;
+
+        if (!$this->jobs->abandon($job, $idleSeconds + 1)) {
+            return $this->back($request, 'csvimporter.job', $target, 'Only a job that does not move any more can be abandoned');
+        }
+
         $this->access->log(AccessManager::UPDATE, \sprintf('Catalog import: job abandoned for "%s"', $job->getSourceName()), $id);
 
         return $this->back($request, 'csvimporter.job', $target, 'The job was abandoned', [], 'success');

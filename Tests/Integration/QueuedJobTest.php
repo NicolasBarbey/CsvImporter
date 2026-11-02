@@ -31,6 +31,7 @@ use CsvImporter\Model\CsvImporterJob;
 use CsvImporter\Profile\ImportProfile;
 use CsvImporter\Profile\ProfileRepository;
 use CsvImporter\Reader\CsvFileReader;
+use CsvImporter\Report\ReportMessage;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Thelia\Messenger\Serializer\AllowedClassesSerializer;
@@ -59,7 +60,7 @@ final class QueuedJobTest extends IntegrationTestCase
             static::getContainer()->get(CatalogImportRunner::class),
             new ImportJobRepository(),
             new ProfileRepository(),
-            new UploadStore(\dirname(__DIR__, 5), new ImageArchiveExtractor()),
+            new UploadStore((string) static::getContainer()->getParameter('kernel.project_dir'), new ImageArchiveExtractor()),
         );
     }
 
@@ -95,6 +96,44 @@ final class QueuedJobTest extends IntegrationTestCase
         self::assertSame(JobRefusal::NotQueued, $this->executor()->execute($job));
         $handler(new RunCatalogImportJob($job->getId()));
         self::assertSame('done', $job->getStatus());
+    }
+
+    public function testAJobTheRunnerStoppedOnAnUnexpectedErrorRunsAgainWhenItsMessageIsReplayed(): void
+    {
+        $job = $this->queuedJob('QUE-5');
+        $job->setStatus('failed')->setError((new ReportMessage(CatalogImportRunner::UNEXPECTED_ERROR))->toJson())->save();
+
+        (new RunCatalogImportJobHandler(new ImportJobRepository(), $this->executor(), static::getContainer()->get('thelia.url.manager')))(new RunCatalogImportJob($job->getId()));
+
+        $job->reload();
+        self::assertSame('done', $job->getStatus());
+        self::assertNull($job->getError());
+        self::assertNotNull($this->product('QUE-5'));
+    }
+
+    public function testAJobAnAdministratorAbandonedIsNotBroughtBackByAReplay(): void
+    {
+        $job = $this->queuedJob('QUE-6');
+        (new ImportJobRepository())->abandon($job);
+
+        (new RunCatalogImportJobHandler(new ImportJobRepository(), $this->executor(), static::getContainer()->get('thelia.url.manager')))(new RunCatalogImportJob($job->getId()));
+
+        $job->reload();
+        self::assertSame('failed', $job->getStatus());
+        self::assertStringContainsString('abandoned', (string) $job->getError());
+        self::assertNull($this->product('QUE-6'));
+    }
+
+    public function testACreateOnlyJobIsNotReplayedBecauseItsFirstRunMayHaveCreatedProducts(): void
+    {
+        $job = $this->queuedJob('QUE-7');
+        $job->setMode('create_only')->setStatus('failed')->setError((new ReportMessage(CatalogImportRunner::UNEXPECTED_ERROR))->toJson())->save();
+
+        (new RunCatalogImportJobHandler(new ImportJobRepository(), $this->executor(), static::getContainer()->get('thelia.url.manager')))(new RunCatalogImportJob($job->getId()));
+
+        $job->reload();
+        self::assertSame('failed', $job->getStatus());
+        self::assertNull($this->product('QUE-7'));
     }
 
     public function testAJobThatNoLongerExistsIsLeftAlone(): void

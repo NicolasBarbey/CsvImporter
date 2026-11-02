@@ -20,8 +20,10 @@ use CsvImporter\Model\CsvImporterJob;
 use CsvImporter\Model\CsvImporterJobQuery;
 use CsvImporter\Model\CsvImporterJobRow;
 use CsvImporter\Model\CsvImporterJobRowQuery;
+use CsvImporter\Model\Map\CsvImporterJobTableMap;
 use CsvImporter\Report\ReportMessage;
 use Propel\Runtime\ActiveQuery\Criteria;
+use Propel\Runtime\Propel;
 
 final readonly class ImportJobRepository
 {
@@ -102,9 +104,9 @@ final readonly class ImportJobRepository
         return array_values(CsvImporterJobRowQuery::create()->filterByJobId($job->getId())->filterById($afterId, Criteria::GREATER_THAN)->orderById()->limit($limit)->find()->getData());
     }
 
-    public function abandon(CsvImporterJob $job): void
+    public function abandon(CsvImporterJob $job, int $idleSeconds = 0): bool
     {
-        $this->markFailed($job, new ReportMessage('The job was abandoned by an administrator'));
+        return $this->leave($job, [JobStatus::Queued, JobStatus::Running], JobStatus::Failed, (new ReportMessage('The job was abandoned by an administrator'))->toJson(), $idleSeconds);
     }
 
     public function changeMode(CsvImporterJob $job, ImportMode $mode): void
@@ -160,7 +162,7 @@ final readonly class ImportJobRepository
         $claimed = CsvImporterJobQuery::create()
             ->filterById($job->getId())
             ->filterByStatus(JobStatus::Queued->value)
-            ->update(['Status' => JobStatus::Running->value, 'StartedAt' => date('Y-m-d H:i:s')]);
+            ->update(['Status' => JobStatus::Running->value, 'StartedAt' => date('Y-m-d H:i:s'), 'UpdatedAt' => date('Y-m-d H:i:s')]);
 
         if ($claimed > 0) {
             $job->reload();
@@ -191,19 +193,74 @@ final readonly class ImportJobRepository
 
     public function markDone(CsvImporterJob $job): void
     {
-        $job
-            ->setStatus(JobStatus::Done->value)
-            ->setFinishedAt(new \DateTimeImmutable())
-            ->save();
+        $this->leave($job, [JobStatus::Running], JobStatus::Done);
     }
 
     public function markFailed(CsvImporterJob $job, ReportMessage $reason): void
     {
-        $job
-            ->setStatus(JobStatus::Failed->value)
-            ->setError($reason->toJson())
-            ->setFinishedAt(new \DateTimeImmutable())
-            ->save();
+        $this->leave($job, [JobStatus::Queued, JobStatus::Running], JobStatus::Failed, $reason->toJson());
+    }
+
+    public function touch(CsvImporterJob $job): bool
+    {
+        CsvImporterJobQuery::create()->filterById($job->getId())->filterByStatus(JobStatus::Running->value)->update(['UpdatedAt' => date('Y-m-d H:i:s')]);
+
+        return CsvImporterJobQuery::create()->filterById($job->getId())->filterByStatus(JobStatus::Running->value)->count() > 0;
+    }
+
+    public function requeue(CsvImporterJob $job): bool
+    {
+        $connection = Propel::getWriteConnection(CsvImporterJobTableMap::DATABASE_NAME);
+        $connection->beginTransaction();
+
+        try {
+            $requeued = CsvImporterJobQuery::create()
+                ->filterById($job->getId())
+                ->filterByStatus(JobStatus::Failed->value)
+                ->update(['Status' => JobStatus::Queued->value, 'UpdatedAt' => date('Y-m-d H:i:s'), 'Error' => null, 'FinishedAt' => null, 'StartedAt' => null, 'TotalRows' => 0, 'ProcessedRows' => 0, 'CreatedRows' => 0, 'UpdatedRows' => 0, 'UnchangedRows' => 0, 'SkippedRows' => 0, 'FailedRows' => 0]);
+
+            if ($requeued > 0) {
+                CsvImporterJobRowQuery::create()->filterByJobId($job->getId())->delete();
+            }
+
+            $connection->commit();
+        } catch (\Throwable $failure) {
+            $connection->rollBack();
+
+            throw $failure;
+        }
+
+        if ($requeued > 0) {
+            $job->reload();
+        }
+
+        return $requeued > 0;
+    }
+
+    /**
+     * @param list<JobStatus> $from
+     */
+    private function leave(CsvImporterJob $job, array $from, JobStatus $to, ?string $error = null, int $idleSeconds = 0): bool
+    {
+        $now = date('Y-m-d H:i:s');
+        $values = ['Status' => $to->value, 'FinishedAt' => $now, 'UpdatedAt' => $now];
+
+        if (null !== $error) {
+            $values['Error'] = $error;
+        }
+
+        $query = CsvImporterJobQuery::create()
+            ->filterById($job->getId())
+            ->filterByStatus(array_map(static fn (JobStatus $status): string => $status->value, $from), Criteria::IN);
+
+        if ($idleSeconds > 0) {
+            $query->filterByUpdatedAt(new \DateTimeImmutable(\sprintf('-%d seconds', $idleSeconds)), Criteria::LESS_EQUAL);
+        }
+
+        $left = $query->update($values) > 0;
+        $job->reload();
+
+        return $left;
     }
 
     public function addLine(CsvImporterJob $job, int $lineNumber, string $outcome, ?string $reference, ?ReportMessage $message): void
