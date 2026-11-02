@@ -45,8 +45,10 @@ final readonly class RunCatalogImportJobHandler
             return;
         }
 
-        if (JobStatus::Failed->value === $job->getStatus() && $this->stoppedOnAnUnexpectedError($job) && ImportMode::CreateOnly->value !== $job->getMode()) {
-            $this->jobs->requeue($job);
+        if (JobStatus::Failed->value === $job->getStatus() && $this->stoppedOnAnUnexpectedError($job)) {
+            ImportMode::CreateOnly->value === $job->getMode()
+                ? $this->jobs->refuseReplay($job, new ReportMessage('The import is not replayed: its first run may already have created products'))
+                : $this->jobs->requeue($job);
         }
 
         $refusal = $this->executor->execute($job);

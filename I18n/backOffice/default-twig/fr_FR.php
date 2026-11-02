@@ -137,6 +137,7 @@ return [
     'The import mode is unknown' => 'Le mode d\'import est inconnu',
     'The import profile does not exist anymore' => 'Le profil d\'import n\'existe plus',
     'The import stopped on an unexpected error' => 'L\'import s\'est arrêté sur une erreur inattendue',
+    'The import is not replayed: its first run may already have created products' => 'L\'import n\'est pas rejoué : son premier passage a peut-être déjà créé des produits',
     'The job could not be started in the background: it waits, start it with "bin/console csvimporter:run-job %job"' => 'Le travail n\'a pas pu être lancé en arrière-plan : il attend, lancez-le avec "bin/console csvimporter:run-job %job"',
     'The job does not exist' => 'Ce travail n\'existe pas',
     'The job has not moved for several minutes: its process may have been stopped.' => 'Le travail n\'a pas avancé depuis plusieurs minutes : son processus a peut-être été arrêté.',

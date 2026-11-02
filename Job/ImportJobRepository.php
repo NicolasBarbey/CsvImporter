@@ -208,6 +208,16 @@ final readonly class ImportJobRepository
         return CsvImporterJobQuery::create()->filterById($job->getId())->filterByStatus(JobStatus::Running->value)->count() > 0;
     }
 
+    public function refuseReplay(CsvImporterJob $job, ReportMessage $reason): void
+    {
+        CsvImporterJobQuery::create()
+            ->filterById($job->getId())
+            ->filterByStatus(JobStatus::Failed->value)
+            ->update(['Error' => $reason->toJson(), 'UpdatedAt' => date('Y-m-d H:i:s')]);
+
+        $job->reload();
+    }
+
     public function requeue(CsvImporterJob $job): bool
     {
         $connection = Propel::getWriteConnection(CsvImporterJobTableMap::DATABASE_NAME);

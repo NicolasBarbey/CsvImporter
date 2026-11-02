@@ -134,6 +134,7 @@ final class QueuedJobTest extends IntegrationTestCase
         $job->reload();
         self::assertSame('failed', $job->getStatus());
         self::assertNull($this->product('QUE-7'));
+        self::assertStringContainsString('not replayed', (string) $job->getError());
     }
 
     public function testAJobThatNoLongerExistsIsLeftAlone(): void
