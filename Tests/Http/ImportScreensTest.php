@@ -97,6 +97,17 @@ final class ImportScreensTest extends WebIntegrationTestCase
         self::assertSame('Catalog import', trim($page->filter('h1')->text()));
     }
 
+    public function testTheUploadFormDoesNotSendTheImagesFieldWhenNoArchiveIsChosen(): void
+    {
+        $this->loginAs($this->factory->admin());
+
+        $form = $this->get('/admin/csv-importer')->filter('form[data-testid="csv-importer-upload-form"]');
+
+        self::assertCount(1, $form->filter('input[type="file"][name="images"]'));
+        self::assertStringContainsString('elements.images', (string) $form->attr('onsubmit'));
+        self::assertStringContainsString('images.disabled = true', (string) $form->attr('onsubmit'));
+    }
+
     public function testTheToolsMenuOffersTheScreenOnlyToAnAdminWhoMayView(): void
     {
         $this->loginAs($this->factory->admin());
@@ -704,12 +715,17 @@ final class ImportScreensTest extends WebIntegrationTestCase
      */
     private function storedFiles(): array
     {
-        return glob(\dirname(__DIR__, 5).'/var/csv-importer/uploads/*') ?: [];
+        return glob($this->projectDirectory().'/var/csv-importer/uploads/*') ?: [];
     }
 
     private function uploadStore(): UploadStore
     {
-        return new UploadStore(\dirname(__DIR__, 5), new ImageArchiveExtractor());
+        return new UploadStore($this->projectDirectory(), new ImageArchiveExtractor());
+    }
+
+    private function projectDirectory(): string
+    {
+        return (string) static::getContainer()->getParameter('kernel.project_dir');
     }
 
     private function runInTheBackground(CsvImporterJob $job): void

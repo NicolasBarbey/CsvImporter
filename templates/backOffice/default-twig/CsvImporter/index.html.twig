@@ -23,7 +23,7 @@
             <div class="card mb-4">
                 <div class="card-header">{{ 'Import a file'|trans({}, domain) }}</div>
                 <div class="card-body">
-                    <form method="post" action="{{ path('csvimporter.upload') }}" enctype="multipart/form-data" data-testid="csv-importer-upload-form">
+                    <form method="post" action="{{ path('csvimporter.upload') }}" enctype="multipart/form-data" data-testid="csv-importer-upload-form" onsubmit="var images = this.elements.images; if (images && !images.value) { images.disabled = true; setTimeout(function () { images.disabled = false; }, 0); }">
                         <input type="hidden" name="_token" value="{{ assignToken() }}">
                         <div class="mb-3">
                             <label for="csv-importer-file" class="form-label">{{ 'CSV file'|trans({}, domain) }}</label>
