@@ -152,4 +152,25 @@ final class ImportCorrectionsTest extends IntegrationTestCase
         self::assertStringNotContainsString('token', $message);
         self::assertStringContainsString('cdn.example.com/a.png', $message);
     }
+
+    public function testAFeatureCellWithSeveralShortValuesLongerThan255CharactersIsImported(): void
+    {
+        $values = [];
+
+        foreach (range(1, 12) as $index) {
+            $values[] = 'Compatible modele numero '.$index.' serie longue';
+        }
+
+        $cell = implode('|', $values);
+        self::assertGreaterThan(255, mb_strlen($cell));
+
+        $job = $this->importCsv($this->csv([
+            ['Référence', 'Titre', 'Prix HT', 'Catégorie', 'C:Compatibilite'],
+            ['CORR-FEAT-LEN', 'Produit', '5,00', 'Corrections', $cell],
+        ]));
+
+        self::assertSame(0, $job->getFailedRows(), 'each value fits in 255 characters, the line must not be refused: '.implode(' / ', array_map(static fn ($line): string => (string) $line->getMessage(), \CsvImporter\Model\CsvImporterJobRowQuery::create()->filterByJobId($job->getId())->find()->getData())));
+        self::assertSame(1, $job->getCreatedRows());
+        self::assertCount(12, FeatureProductQuery::create()->filterByProductId($this->product('CORR-FEAT-LEN')->getId())->find());
+    }
 }

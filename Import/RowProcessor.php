@@ -347,11 +347,13 @@ final readonly class RowProcessor
             $checked = [];
         }
 
-        foreach ($mapping->featureHeaders() as $header => $name) {
-            $checked[$header] = trim($row->cells[$header] ?? '');
-        }
-
         $this->assertShortEnough($checked);
+
+        foreach (array_keys($mapping->featureHeaders()) as $header) {
+            foreach ($this->featureTitles($row, (string) $header) as $title) {
+                $this->assertShortEnough([$header => $title]);
+            }
+        }
     }
 
     private function assertShortEnough(array $valuesByColumn): void
@@ -411,7 +413,7 @@ final readonly class RowProcessor
         $features = [];
 
         foreach ($mapping->featureHeaders() as $header => $name) {
-            $titles = array_values(array_unique(array_filter(array_map('trim', explode('|', $row->cells[$header] ?? '')), static fn (string $title): bool => '' !== $title)));
+            $titles = $this->featureTitles($row, (string) $header);
 
             if ([] === $titles) {
                 continue;
@@ -422,6 +424,14 @@ final readonly class RowProcessor
         }
 
         return $features;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function featureTitles(SourceRow $row, string $header): array
+    {
+        return array_values(array_unique(array_filter(array_map('trim', explode('|', $row->cells[$header] ?? '')), static fn (string $title): bool => '' !== $title)));
     }
 
     private function htmlOrStored(?string $cleaned, ?string $stored): ?string
