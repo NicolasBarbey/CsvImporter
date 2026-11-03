@@ -16,6 +16,7 @@ namespace CsvImporter\Command;
 
 use CsvImporter\Import\CatalogImportRunner;
 use CsvImporter\Import\ImportMode;
+use CsvImporter\Import\RowOutcome;
 use CsvImporter\Job\ImportJobRepository;
 use CsvImporter\Job\JobStatus;
 use CsvImporter\Mapping\HeaderGuesser;
@@ -27,6 +28,7 @@ use CsvImporter\Profile\ProfileRepository;
 use CsvImporter\Reader\CsvFileReader;
 use CsvImporter\Reader\UnreadableFileException;
 use CsvImporter\Report\ReportMessage;
+use Propel\Runtime\ActiveQuery\Criteria;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Input\InputArgument;
@@ -202,7 +204,11 @@ final class ImportCatalogCommand extends ContainerAwareCommand
 
     private function printReport(CsvImporterJob $job, SymfonyStyle $style): void
     {
-        $query = CsvImporterJobRowQuery::create()->filterByJobId($job->getId())->orderByLineNumber()->orderById();
+        $query = CsvImporterJobRowQuery::create()
+            ->filterByJobId($job->getId())
+            ->filterByOutcome([RowOutcome::Created->value, RowOutcome::Updated->value, RowOutcome::Unchanged->value], Criteria::NOT_IN)
+            ->orderByLineNumber()
+            ->orderById();
         $total = $query->count();
 
         if (0 === $total) {

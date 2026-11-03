@@ -83,6 +83,17 @@ final class ImportCatalogCommandTest extends IntegrationTestCase
         self::assertSame('3.000000', $this->priceOf('CMD-4'));
     }
 
+    public function testTheConsoleReportListsTheLinesThatNeedAttentionOnly(): void
+    {
+        $tester = $this->tester();
+
+        $status = $tester->execute(['file' => $this->file([['Référence', 'Titre', 'Prix HT', 'Catégorie'], ['CMD-REPORT-1', 'Mug', 'abc', 'Cuisine CMD'], ['CMD-REPORT-2', 'Mug', '3,00', 'Cuisine CMD']]), '--save-mapping' => $this->profileName()]);
+
+        self::assertSame(ImportCatalogCommand::EXIT_ROWS_FAILED, $status);
+        self::assertMatchesRegularExpression('/^\s*2\s+failed\s+CMD-REPORT-1\s/m', $tester->getDisplay());
+        self::assertDoesNotMatchRegularExpression('/^\s*3\s+created\s/m', $tester->getDisplay(), 'a created line stays in the stored report, the console shows the lines that need attention');
+    }
+
     public function testAKnownProfileIsReusedByNameAndByIdentifier(): void
     {
         $name = $this->profileName();
