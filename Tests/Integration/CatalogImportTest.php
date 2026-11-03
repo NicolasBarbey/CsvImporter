@@ -508,4 +508,24 @@ final class CatalogImportTest extends IntegrationTestCase
         self::assertSame([false, false], $during);
         self::assertTrue(Propel::isInstancePoolingEnabled());
     }
+
+    public function testTheReportHoldsOneLinePerRowWhateverItsOutcome(): void
+    {
+        $created = $this->importCsv("Référence;Titre;Prix HT;Catégorie\nCSVIT-REPORT-1;Un;5,00;Rapport CSV\nCSVIT-REPORT-2;Deux;6,00;Rapport CSV\n");
+
+        self::assertSame(['created', 'created'], array_map(static fn ($line): string => $line->getOutcome(), $this->reportLines($created, 'created')));
+
+        $job = $this->importCsv("Référence;Titre;Prix HT;Catégorie\nCSVIT-REPORT-1;Un;5,00;Rapport CSV\nCSVIT-REPORT-2;Deux;7,00;Rapport CSV\nCSVIT-REPORT-3;Trois;pas un prix;Rapport CSV\n");
+
+        $outcomes = [];
+
+        foreach (['unchanged', 'updated', 'failed'] as $outcome) {
+            foreach ($this->reportLines($job, $outcome) as $line) {
+                $outcomes[$line->getLineNumber()] = $line->getOutcome();
+            }
+        }
+
+        ksort($outcomes);
+        self::assertSame([2 => 'unchanged', 3 => 'updated', 4 => 'failed'], $outcomes);
+    }
 }

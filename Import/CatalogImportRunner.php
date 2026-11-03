@@ -205,9 +205,7 @@ final readonly class CatalogImportRunner
 
     private function report(CsvImporterJob $job, RowResult $result): void
     {
-        if (\in_array($result->outcome, [RowOutcome::Failed, RowOutcome::Skipped], true)) {
-            $this->jobs->addLine($job, $result->lineNumber, $result->outcome->value, $result->reference, $result->message);
-        }
+        $this->jobs->addLine($job, $result->lineNumber, $result->outcome->value, $result->reference, $result->message);
 
         foreach ($result->warnings as $warning) {
             $this->jobs->addLine($job, $result->lineNumber, 'warning', $result->reference, $warning);
