@@ -29,7 +29,6 @@ use CsvImporter\Mapping\HeaderGuesser;
 use CsvImporter\Mapping\ImportMapping;
 use CsvImporter\Mapping\MappingValidator;
 use CsvImporter\Model\CsvImporterJob;
-use CsvImporter\Model\CsvImporterProfileQuery;
 use CsvImporter\Profile\ImportProfile;
 use CsvImporter\Profile\ProfileRepository;
 use CsvImporter\Reader\CsvDialectDetector;
@@ -436,11 +435,7 @@ final readonly class ImportScreenController
 
     private function profileChangedSince(CsvImporterJob $simulation): bool
     {
-        $row = CsvImporterProfileQuery::create()->findPk($simulation->getProfileId());
-        $created = $simulation->getCreatedAt();
-
-        // Whole seconds: the database keeps no more, and an instance still in memory would carry microseconds
-        return null === $row || null === $created || null === $row->getUpdatedAt() || $row->getUpdatedAt()->getTimestamp() > $created->getTimestamp();
+        return $this->profiles->changedSince($simulation->getProfileId(), $simulation->getCreatedAt());
     }
 
     /**

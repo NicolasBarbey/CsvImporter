@@ -35,9 +35,16 @@ final readonly class ProfileRepository
         return $this->toProfile($row);
     }
 
-    public function updatedAt(int $id): ?\DateTimeInterface
+    /**
+     * True when the profile was saved after the given date, or when the profile or one of the
+     * dates is missing. Whole seconds: the database keeps no more, and an instance still in
+     * memory would carry microseconds, so a change within the same second is not seen.
+     */
+    public function changedSince(?int $id, ?\DateTimeInterface $since): bool
     {
-        return CsvImporterProfileQuery::create()->findPk($id)?->getUpdatedAt();
+        $updated = null === $id ? null : CsvImporterProfileQuery::create()->findPk($id)?->getUpdatedAt();
+
+        return null === $updated || null === $since || $updated->getTimestamp() > $since->getTimestamp();
     }
 
     public function find(int $id): ?ImportProfile

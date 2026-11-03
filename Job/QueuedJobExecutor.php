@@ -52,13 +52,10 @@ final readonly class QueuedJobExecutor
 
     /**
      * The import runs the profile as it is when it starts, not as it was when the
-     * administrator asked: a change in between is a mapping nobody simulated. Whole seconds:
-     * a change within the second of the request is not seen.
+     * administrator asked: a change in between is a mapping nobody simulated.
      */
     private function mappingChangedSinceRequested(CsvImporterJob $job): bool
     {
-        $updated = null === $job->getProfileId() ? null : $this->profiles->updatedAt($job->getProfileId());
-
-        return null === $updated || null === $job->getCreatedAt() || $updated->getTimestamp() > $job->getCreatedAt()->getTimestamp();
+        return $this->profiles->changedSince($job->getProfileId(), $job->getCreatedAt());
     }
 }
