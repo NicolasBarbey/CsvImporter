@@ -86,7 +86,7 @@ final class CsvFileReader
             while (false !== $record = $this->readRecord($handle)) {
                 ++$line;
 
-                if ([null] === $record) {
+                if ($this->isEmpty($record)) {
                     continue;
                 }
 
@@ -95,6 +95,20 @@ final class CsvFileReader
         } finally {
             fclose($handle);
         }
+    }
+
+    /**
+     * A blank line, or a line of separators only, which is how a spreadsheet saves an empty row.
+     */
+    private function isEmpty(array $record): bool
+    {
+        foreach ($record as $cell) {
+            if ('' !== trim((string) $cell)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function assertReasonableSize(int $line, array $record): void

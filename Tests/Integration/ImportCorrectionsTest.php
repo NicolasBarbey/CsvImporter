@@ -173,4 +173,20 @@ final class ImportCorrectionsTest extends IntegrationTestCase
         self::assertSame(1, $job->getCreatedRows());
         self::assertCount(12, FeatureProductQuery::create()->filterByProductId($this->product('CORR-FEAT-LEN')->getId())->find());
     }
+
+    public function testALineOfSeparatorsOnlyIsSkippedLikeABlankLine(): void
+    {
+        $job = $this->importCsv(
+            "Référence;Titre;Prix HT;Catégorie\n"
+            ."CORR-EMPTY-1;Produit;5,00;Corrections\n"
+            .";;;\n"
+            ."\n"
+            ."CORR-EMPTY-2;Produit;6,00;Corrections\n"
+            .";;;\n",
+        );
+
+        self::assertSame(2, $job->getCreatedRows());
+        self::assertSame(0, $job->getFailedRows(), 'an empty spreadsheet row is not a refused line');
+        self::assertSame(2, $job->getTotalRows(), 'an empty spreadsheet row is not a line to import');
+    }
 }

@@ -94,6 +94,14 @@ final class CsvFileReaderTest extends TestCase
         self::assertSame([2, 4], array_map(static fn (SourceRow $row): int => $row->lineNumber, $rows));
     }
 
+    public function testALineOfSeparatorsOnlyIsSkippedButStillCounted(): void
+    {
+        $rows = iterator_to_array((new CsvFileReader($this->file("ref;titre;prix\nA1;Chaise;10\n;;\n ; ;\nA2;Table;20\n;\n")))->rows(), false);
+
+        self::assertSame([2, 5], array_map(static fn (SourceRow $row): int => $row->lineNumber, $rows));
+        self::assertNull($rows[1]->problem);
+    }
+
     public function testAColumnWithoutHeaderIsDropped(): void
     {
         $reader = new CsvFileReader($this->file("ref;titre;\nA1;Chaise;\n"));
