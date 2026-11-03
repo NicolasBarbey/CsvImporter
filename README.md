@@ -7,6 +7,10 @@ php Thelia csvimporter:import-catalog <fichier.csv> --save-mapping="Fournisseur 
 php Thelia csvimporter:import-catalog <fichier.csv> --mapping="Fournisseur X"
 ```
 
+## Depuis la 1.x
+
+La 2.0.0 réécrit le module. Ces classes publiques de la 1.x n'existent plus : `Command\ImportProducts`, `Controller\ConfigurationController`, `Hook\HookManager`, `Service\CsvParserService` et `Service\CsvProductImporterService`. La commande garde son nom, `csvimporter:import-catalog` ; un code qui appelait ces classes directement est à adapter.
+
 ## Options
 
 - `--save-mapping=<nom>` : devine l'association colonne → champ d'après l'en-tête du fichier, l'affiche et la garde sous un nouveau profil.
