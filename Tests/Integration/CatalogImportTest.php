@@ -351,7 +351,7 @@ final class CatalogImportTest extends IntegrationTestCase
 
     public function testTheJobKeepsItsCountsAndTheReportOfWhatDidNotGoThroughCleanly(): void
     {
-        $job = $this->importCsv($this->csv([self::HEADER, $this->fullRow(1), ['', '', '', '', '', '', '', '', '', '', '', '']]));
+        $job = $this->importCsv($this->csv([self::HEADER, $this->fullRow(1), ['CSVIT-NO-TITLE', '', '', '', '', '', '', '', '', '', '', '']]));
 
         self::assertSame(2, $job->getTotalRows());
         self::assertSame(2, $job->getProcessedRows());
